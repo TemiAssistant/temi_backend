@@ -23,7 +23,58 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
+# ==================== 👇 새로 추가: 상품 개수 조회 ====================
 
+@router.get(
+    "/count",
+    summary="전체 상품 개수 조회",
+    description="Firestore에 저장된 전체 상품 개수를 조회합니다"
+)
+async def get_product_count():
+    """
+    전체 상품 개수 조회
+    
+    Returns:
+        dict: {
+            "success": bool,
+            "total_count": int,
+            "active_count": int,
+            "inactive_count": int
+        }
+    """
+    try:
+        count_data = await product_service.get_product_count()
+        return {
+            "success": True,
+            **count_data
+        }
+    except Exception as e:
+        logger.error(f"상품 개수 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="상품 개수 조회 중 오류가 발생했습니다"
+        )
+# ==================== 👇 필터 옵션 조회 API 추가 ====================
+
+@router.get(
+    "/filters/options",
+    summary="필터 옵션 조회",
+    description="검색 필터에 사용할 브랜드, 카테고리, 서브카테고리, 태그 목록을 조회합니다"
+)
+async def get_filter_options():
+
+    try:
+        filter_options = await product_service.get_filter_options()
+        return {
+            "success": True,
+            **filter_options
+        }
+    except Exception as e:
+        logger.error(f"필터 옵션 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="필터 옵션 조회 중 오류가 발생했습니다"
+        )
 # ==================== 카테고리/브랜드 (먼저 정의) ====================
 
 @router.get(
