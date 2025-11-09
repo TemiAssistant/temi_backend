@@ -1,0 +1,529 @@
+{
+  "products": [
+    {
+      "product_id": "prod_001",
+      "name": "설화수 자음생 에센스",
+      "brand": "설화수",
+      "category": "스킨케어",
+      "sub_category": "에센스/세럼",
+      "price": 85000,
+      "original_price": 95000,
+      "discount_rate": 10,
+      "location": {
+        "zone": "A-05",
+        "shelf": 2,
+        "x": 10,
+        "y": 20
+      },
+      "stock": {
+        "current": 24,
+        "threshold": 5,
+        "unit_weight": 100
+      },
+      "description": "피부 본연의 힘을 깨우는 자음생 에센스",
+      "ingredients": ["진세노사이드", "히알루론산"],
+      "skin_types": ["건성", "복합성"],
+      "concerns": ["주름개선", "탄력"],
+      "rating": {
+        "average": 4.8,
+        "count": 1250
+      },
+      "sales": {
+        "total_sold": 5430,
+        "monthly_sold": 245
+      },
+      "tags": ["보습", "안티에이징", "고기능"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_002",
+      "name": "설화수 윤조에센스",
+      "brand": "설화수",
+      "category": "스킨케어",
+      "sub_category": "에센스/세럼",
+      "price": 68000,
+      "original_price": 68000,
+      "discount_rate": 0,
+      "location": {
+        "zone": "A-05",
+        "shelf": 2,
+        "x": 11,
+        "y": 20
+      },
+      "stock": {
+        "current": 18,
+        "threshold": 5,
+        "unit_weight": 90
+      },
+      "description": "피부 결을 정돈하는 윤조에센스",
+      "ingredients": ["진세노사이드", "감초추출물"],
+      "skin_types": ["건성", "민감성"],
+      "concerns": ["탄력", "결개선"],
+      "rating": {
+        "average": 4.7,
+        "count": 890
+      },
+      "sales": {
+        "total_sold": 3200,
+        "monthly_sold": 180
+      },
+      "tags": ["보습", "진정", "한방"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_003",
+      "name": "후 천기단 본 에센스",
+      "brand": "후",
+      "category": "스킨케어",
+      "sub_category": "에센스/세럼",
+      "price": 120000,
+      "original_price": 120000,
+      "discount_rate": 0,
+      "location": {
+        "zone": "A-03",
+        "shelf": 1,
+        "x": 8,
+        "y": 18
+      },
+      "stock": {
+        "current": 12,
+        "threshold": 3,
+        "unit_weight": 110
+      },
+      "description": "피부 생명력을 채우는 프리미엄 에센스",
+      "ingredients": ["야생 산삼", "녹용"],
+      "skin_types": ["전체"],
+      "concerns": ["안티에이징", "주름개선", "탄력"],
+      "rating": {
+        "average": 4.9,
+        "count": 2100
+      },
+      "sales": {
+        "total_sold": 8900,
+        "monthly_sold": 320
+      },
+      "tags": ["프리미엄", "안티에이징", "한방"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_004",
+      "name": "토리든 다이브인 세럼",
+      "brand": "토리든",
+      "category": "스킨케어",
+      "sub_category": "에센스/세럼",
+      "price": 32000,
+      "original_price": 38000,
+      "discount_rate": 15,
+      "location": {
+        "zone": "B-03",
+        "shelf": 1,
+        "x": 15,
+        "y": 30
+      },
+      "stock": {
+        "current": 15,
+        "threshold": 5,
+        "unit_weight": 80
+      },
+      "description": "깊은 수분 충전 저분자 히알루론산 세럼",
+      "ingredients": ["저분자 히알루론산", "판테놀"],
+      "skin_types": ["지성", "복합성"],
+      "concerns": ["수분부족", "진정"],
+      "rating": {
+        "average": 4.6,
+        "count": 890
+      },
+      "sales": {
+        "total_sold": 4500,
+        "monthly_sold": 380
+      },
+      "tags": ["진정", "보습", "저자극"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_005",
+      "name": "라운드랩 1025 독도 토너",
+      "brand": "라운드랩",
+      "category": "스킨케어",
+      "sub_category": "토너",
+      "price": 19800,
+      "original_price": 23000,
+      "discount_rate": 14,
+      "location": {
+        "zone": "B-05",
+        "shelf": 3,
+        "x": 18,
+        "y": 32
+      },
+      "stock": {
+        "current": 30,
+        "threshold": 10,
+        "unit_weight": 200
+      },
+      "description": "울릉도 해양심층수 저자극 수분 토너",
+      "ingredients": ["해양심층수", "판테놀"],
+      "skin_types": ["민감성", "전체"],
+      "concerns": ["진정", "수분"],
+      "rating": {
+        "average": 4.7,
+        "count": 2100
+      },
+      "sales": {
+        "total_sold": 12000,
+        "monthly_sold": 850
+      },
+      "tags": ["진정", "수분", "민감성"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_006",
+      "name": "라운드랩 버치 주스 모이스춰라이징 선크림",
+      "brand": "라운드랩",
+      "category": "선케어",
+      "sub_category": "선크림",
+      "price": 16500,
+      "original_price": 16500,
+      "discount_rate": 0,
+      "location": {
+        "zone": "B-07",
+        "shelf": 2,
+        "x": 20,
+        "y": 35
+      },
+      "stock": {
+        "current": 45,
+        "threshold": 15,
+        "unit_weight": 50
+      },
+      "description": "촉촉하고 가벼운 하이브리드 선크림",
+      "ingredients": ["자작나무수액", "히알루론산"],
+      "skin_types": ["전체"],
+      "concerns": ["자외선차단", "보습"],
+      "rating": {
+        "average": 4.8,
+        "count": 3500
+      },
+      "sales": {
+        "total_sold": 18000,
+        "monthly_sold": 1200
+      },
+      "tags": ["선크림", "보습", "순한"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_007",
+      "name": "코스알엑스 어드밴스드 달팽이 크림",
+      "brand": "코스알엑스",
+      "category": "스킨케어",
+      "sub_category": "크림",
+      "price": 24000,
+      "original_price": 28000,
+      "discount_rate": 14,
+      "location": {
+        "zone": "C-02",
+        "shelf": 2,
+        "x": 25,
+        "y": 15
+      },
+      "stock": {
+        "current": 18,
+        "threshold": 5,
+        "unit_weight": 90
+      },
+      "description": "피부 재생과 진정을 위한 달팽이 크림",
+      "ingredients": ["달팽이 점액 여과물", "판테놀"],
+      "skin_types": ["전체"],
+      "concerns": ["재생", "보습", "진정"],
+      "rating": {
+        "average": 4.5,
+        "count": 650
+      },
+      "sales": {
+        "total_sold": 3800,
+        "monthly_sold": 280
+      },
+      "tags": ["재생", "보습", "진정"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_008",
+      "name": "아이소이 불가리안 로즈 인텐시브 에너자이징 크림",
+      "brand": "아이소이",
+      "category": "스킨케어",
+      "sub_category": "크림",
+      "price": 28000,
+      "original_price": 28000,
+      "discount_rate": 0,
+      "location": {
+        "zone": "C-04",
+        "shelf": 1,
+        "x": 28,
+        "y": 18
+      },
+      "stock": {
+        "current": 12,
+        "threshold": 5,
+        "unit_weight": 85
+      },
+      "description": "불가리안 로즈로 피부 활력 충전",
+      "ingredients": ["불가리안 로즈", "시카"],
+      "skin_types": ["건성", "민감성"],
+      "concerns": ["시카", "진정", "민감성"],
+      "rating": {
+        "average": 4.4,
+        "count": 520
+      },
+      "sales": {
+        "total_sold": 2900,
+        "monthly_sold": 190
+      },
+      "tags": ["시카", "진정", "민감성"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_009",
+      "name": "닥터지 레드 블레미쉬 클리어 수딩 크림",
+      "brand": "닥터지",
+      "category": "스킨케어",
+      "sub_category": "크림",
+      "price": 25000,
+      "original_price": 30000,
+      "discount_rate": 17,
+      "location": {
+        "zone": "C-06",
+        "shelf": 3,
+        "x": 30,
+        "y": 20
+      },
+      "stock": {
+        "current": 22,
+        "threshold": 8,
+        "unit_weight": 70
+      },
+      "description": "트러블 진정 레드 수딩 크림",
+      "ingredients": ["시카", "마데카소사이드"],
+      "skin_types": ["지성", "복합성", "트러블"],
+      "concerns": ["트러블", "진정", "피지"],
+      "rating": {
+        "average": 4.6,
+        "count": 1800
+      },
+      "sales": {
+        "total_sold": 7200,
+        "monthly_sold": 520
+      },
+      "tags": ["트러블", "진정", "시카"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_010",
+      "name": "메디힐 티트리 케어 솔루션 마스크",
+      "brand": "메디힐",
+      "category": "마스크팩",
+      "sub_category": "시트마스크",
+      "price": 1500,
+      "original_price": 2000,
+      "discount_rate": 25,
+      "location": {
+        "zone": "D-01",
+        "shelf": 1,
+        "x": 35,
+        "y": 10
+      },
+      "stock": {
+        "current": 100,
+        "threshold": 30,
+        "unit_weight": 25
+      },
+      "description": "티트리 성분의 진정 마스크팩",
+      "ingredients": ["티트리오일", "병풀추출물"],
+      "skin_types": ["지성", "트러블"],
+      "concerns": ["트러블", "진정"],
+      "rating": {
+        "average": 4.5,
+        "count": 5200
+      },
+      "sales": {
+        "total_sold": 25000,
+        "monthly_sold": 2100
+      },
+      "tags": ["마스크팩", "진정", "티트리"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_011",
+      "name": "메디힐 NMF 아쿠아링 마스크",
+      "brand": "메디힐",
+      "category": "마스크팩",
+      "sub_category": "시트마스크",
+      "price": 1500,
+      "original_price": 2000,
+      "discount_rate": 25,
+      "location": {
+        "zone": "D-01",
+        "shelf": 1,
+        "x": 36,
+        "y": 10
+      },
+      "stock": {
+        "current": 95,
+        "threshold": 30,
+        "unit_weight": 25
+      },
+      "description": "NMF 성분의 수분 충전 마스크팩",
+      "ingredients": ["히알루론산", "NMF"],
+      "skin_types": ["건성", "전체"],
+      "concerns": ["수분", "보습"],
+      "rating": {
+        "average": 4.6,
+        "count": 4800
+      },
+      "sales": {
+        "total_sold": 22000,
+        "monthly_sold": 1900
+      },
+      "tags": ["마스크팩", "보습", "수분"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_012",
+      "name": "바닐라코 클린 잇 제로 클렌징 밤",
+      "brand": "바닐라코",
+      "category": "클렌징",
+      "sub_category": "클렌징밤",
+      "price": 18000,
+      "original_price": 22000,
+      "discount_rate": 18,
+      "location": {
+        "zone": "E-02",
+        "shelf": 2,
+        "x": 40,
+        "y": 15
+      },
+      "stock": {
+        "current": 35,
+        "threshold": 10,
+        "unit_weight": 100
+      },
+      "description": "메이크업도 깔끔하게 지우는 클렌징 밤",
+      "ingredients": ["파파야 추출물", "아세로라 추출물"],
+      "skin_types": ["전체"],
+      "concerns": ["클렌징", "메이크업 제거"],
+      "rating": {
+        "average": 4.7,
+        "count": 3200
+      },
+      "sales": {
+        "total_sold": 15000,
+        "monthly_sold": 980
+      },
+      "tags": ["클렌징", "메이크업제거", "순한"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_013",
+      "name": "코스알엑스 로우 pH 굿모닝 젤 클렌저",
+      "brand": "코스알엑스",
+      "category": "클렌징",
+      "sub_category": "클렌징폼",
+      "price": 12000,
+      "original_price": 15000,
+      "discount_rate": 20,
+      "location": {
+        "zone": "E-04",
+        "shelf": 1,
+        "x": 42,
+        "y": 18
+      },
+      "stock": {
+        "current": 28,
+        "threshold": 8,
+        "unit_weight": 150
+      },
+      "description": "저자극 약산성 젤 클렌저",
+      "ingredients": ["티트리오일", "BHA"],
+      "skin_types": ["지성", "복합성"],
+      "concerns": ["클렌징", "피지", "각질"],
+      "rating": {
+        "average": 4.5,
+        "count": 2800
+      },
+      "sales": {
+        "total_sold": 11000,
+        "monthly_sold": 750
+      },
+      "tags": ["클렌징", "약산성", "티트리"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_014",
+      "name": "미샤 타임 레볼루션 더 퍼스트 트리트먼트 에센스",
+      "brand": "미샤",
+      "category": "스킨케어",
+      "sub_category": "에센스/세럼",
+      "price": 38000,
+      "original_price": 45000,
+      "discount_rate": 16,
+      "location": {
+        "zone": "F-01",
+        "shelf": 2,
+        "x": 45,
+        "y": 12
+      },
+      "stock": {
+        "current": 20,
+        "threshold": 5,
+        "unit_weight": 150
+      },
+      "description": "발효 효모로 피부 결 정돈",
+      "ingredients": ["발효 효모", "나이아신아마이드"],
+      "skin_types": ["전체"],
+      "concerns": ["결개선", "브라이트닝", "탄력"],
+      "rating": {
+        "average": 4.6,
+        "count": 1900
+      },
+      "sales": {
+        "total_sold": 8500,
+        "monthly_sold": 450
+      },
+      "tags": ["발효", "결개선", "브라이트닝"],
+      "is_active": true
+    },
+    {
+      "product_id": "prod_015",
+      "name": "에스트라 아토베리어365 크림",
+      "brand": "에스트라",
+      "category": "스킨케어",
+      "sub_category": "크림",
+      "price": 32000,
+      "original_price": 32000,
+      "discount_rate": 0,
+      "location": {
+        "zone": "F-03",
+        "shelf": 1,
+        "x": 48,
+        "y": 15
+      },
+      "stock": {
+        "current": 16,
+        "threshold": 5,
+        "unit_weight": 80
+      },
+      "description": "365일 피부 장벽 강화 크림",
+      "ingredients": ["세라마이드", "판테놀"],
+      "skin_types": ["민감성", "건성"],
+      "concerns": ["장벽강화", "보습", "진정"],
+      "rating": {
+        "average": 4.7,
+        "count": 1200
+      },
+      "sales": {
+        "total_sold": 5600,
+        "monthly_sold": 320
+      },
+      "tags": ["장벽강화", "민감성", "세라마이드"],
+      "is_active": true
+    }
+  ]
+}

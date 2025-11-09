@@ -1,0 +1,19 @@
+# Firebase 비공개 키 (절대 Git에 올리지 말 것!)
+serviceAccountKey.json
+
+# 환경 변수
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
