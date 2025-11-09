@@ -109,6 +109,7 @@ class ProductSummary(ProductBase):
     location: ProductLocation
     stock: ProductStock
     rating: Optional[ProductRating] = None
+    sales : Optional[ProductSales] = None
     tags: List[str] = []
 
     class Config:
