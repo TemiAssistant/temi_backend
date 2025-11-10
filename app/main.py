@@ -10,6 +10,8 @@ from datetime import datetime
 
 # ==================== 👇 추가: API 라우터 import ====================
 from app.api import products
+from app.api import payment  # 결제 API 라우터
+from app.api import navigation
 
 load_dotenv()
 
@@ -32,7 +34,8 @@ app.add_middleware(
 
 # ==================== 👇 추가: API 라우터 등록 ====================
 app.include_router(products.router)
-
+app.include_router(payment.router)  # 결제 API 라우터 등록
+app.include_router(navigation.router)
 
 # ==================== 기본 엔드포인트 ====================
 
@@ -50,6 +53,8 @@ async def root():
         "docs": "/docs",  # 👈 추가
         "endpoints": {  # 👈 추가: API 목록
             "products": "/api/products",
+            "payments": "/api/payments",
+            "navigation": "/api/navigation",
             "test": "/test"
         }
     }
