@@ -1,4 +1,13 @@
 # app/main.py
+
+import logging
+
+# 로깅 설정 - DEBUG 레벨로
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse

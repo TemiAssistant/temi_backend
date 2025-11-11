@@ -115,18 +115,25 @@ async def update_navigation_progress(
     navigation_id: str = Path(..., description="네비게이션 세션 ID"),
     current_x: float = Query(..., description="현재 X 좌표"),
     current_y: float = Query(..., description="현재 Y 좌표"),
-    status: Optional[str] = Query(None, description="상태 (NAVIGATING, ARRIVED, PAUSED)")
+    status: Optional[str] = Query(None, description="상태 (IDLE/NAVIGATING/ARRIVED/FAILED/PAUSED)")
 ):
     """
     네비게이션 진행 상황 업데이트
     
     **호출 주체:** Temi 로봇 (이동 중 주기적으로 호출)
     
+    **상태 값:**
+    - IDLE: 대기중
+    - NAVIGATING: 이동중
+    - ARRIVED: 도착
+    - FAILED: 실패
+    - PAUSED: 일시정지
+    
     Args:
         navigation_id: 네비게이션 세션 ID
         current_x: 현재 X 좌표
         current_y: 현재 Y 좌표
-        status: 상태 업데이트
+        status: 상태 업데이트 (enum name 또는 value)
     
     Returns:
         성공 메시지
@@ -135,7 +142,23 @@ async def update_navigation_progress(
         from app.models.navigation import NavigationStatus
         
         current_location = Coordinate(x=current_x, y=current_y)
-        nav_status = NavigationStatus(status) if status else None
+        
+        # 상태 검증 및 변환
+        nav_status = None
+        if status:
+            status_upper = status.upper()
+            try:
+                # 1. enum의 name으로 접근 시도 (NAVIGATING → NavigationStatus.NAVIGATING)
+                nav_status = NavigationStatus[status_upper]
+                logger.debug(f"✅ 상태 변환 성공: {status} → {nav_status.name} (값: {nav_status.value})")
+            except KeyError:
+                # 2. enum의 value로 검색 시도 (이동중 → NavigationStatus.NAVIGATING)
+                try:
+                    nav_status = NavigationStatus(status)
+                    logger.debug(f"✅ 상태 변환 성공(value): {status} → {nav_status.name}")
+                except ValueError:
+                    logger.warning(f"⚠️ 잘못된 상태 값: {status} (무시하고 계속)")
+                    # 잘못된 상태면 None으로 처리하고 계속 진행
         
         await navigation_service.update_navigation_progress(
             navigation_id=navigation_id,
@@ -143,13 +166,21 @@ async def update_navigation_progress(
             status=nav_status
         )
         
-        return {"success": True, "message": "진행 상황 업데이트 완료"}
+        return {
+            "success": True,
+            "message": "진행 상황 업데이트 완료",
+            "navigation_id": navigation_id,
+            "current_location": {"x": current_x, "y": current_y},
+            "status": nav_status.name if nav_status else None
+        }
         
     except Exception as e:
-        logger.error(f"진행 상황 업데이트 실패: {str(e)}")
+        logger.error(f"❌ 진행 상황 업데이트 실패: {str(e)}")
+        import traceback
+        logger.error(f"스택 트레이스:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail="진행 상황 업데이트 중 오류가 발생했습니다"
+            detail=f"진행 상황 업데이트 중 오류가 발생했습니다: {str(e)}"
         )
 
 

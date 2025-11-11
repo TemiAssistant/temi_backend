@@ -48,6 +48,12 @@ class NavigationService:
         
         # Temi 기본 속도
         self.default_temi_speed = 0.8  # m/s
+        
+        # Realtime DB 연결 확인
+        if self.rtdb:
+            logger.info("✅ Realtime DB 연결됨")
+        else:
+            logger.warning("⚠️ Realtime DB 미연결 (Firestore만 사용)")
     
     def _load_store_layout(self) -> dict:
         """매장 레이아웃 로드"""
@@ -63,7 +69,8 @@ class NavigationService:
                     'width': layout.get('width', 50),
                     'height': layout.get('height', 40),
                     'zones': layout.get('zones', []),
-                    'obstacles': []
+                    'obstacles': [],
+                    'charging_stations': data.get('temi_config', {}).get('charging_stations', [])
                 }
             else:
                 logger.warning("⚠️ 매장 설정을 찾을 수 없습니다. 기본값 사용")
@@ -71,12 +78,19 @@ class NavigationService:
                     'width': 50,
                     'height': 40,
                     'zones': [],
-                    'obstacles': []
+                    'obstacles': [],
+                    'charging_stations': []
                 }
                 
         except Exception as e:
             logger.error(f"매장 레이아웃 로드 실패: {str(e)}")
-            return {'width': 50, 'height': 40, 'zones': [], 'obstacles': []}
+            return {
+                'width': 50,
+                'height': 40,
+                'zones': [],
+                'obstacles': [],
+                'charging_stations': []
+            }
     
     # ==================== 네비게이션 안내 ====================
     
@@ -160,9 +174,9 @@ class NavigationService:
                 "customer_id": request.customer_id,
                 "product_id": request.product_id,
                 "product_name": product_data['name'],
-                "start_location": start.dict(),
-                "destination": end.dict(),
-                "path": [coord.dict() for coord in path_coords],
+                "start_location": {"x": start.x, "y": start.y},
+                "destination": {"x": end.x, "y": end.y},
+                "path": [{"x": c.x, "y": c.y} for c in path_coords],
                 "status": NavigationStatus.NAVIGATING.value,
                 "progress": 0,
                 "distance_total": distance,
@@ -174,14 +188,18 @@ class NavigationService:
             self.db.collection(self.navigation_collection)\
                   .document(navigation_id).set(navigation_data)
             
-            # 6. Realtime DB에 경로 저장 (WebSocket 실시간 전송용)
+            # 6. Realtime DB에 경로 저장 (선택적)
             if self.rtdb:
-                self.rtdb.child(f'navigation/{navigation_id}').set({
-                    'temi_id': request.temi_id,
-                    'path': [{'x': c.x, 'y': c.y} for c in path_coords],
-                    'status': NavigationStatus.NAVIGATING.value,
-                    'timestamp': {'.sv': 'timestamp'}
-                })
+                try:
+                    self.rtdb.child(f'navigation/{navigation_id}').set({
+                        'temi_id': request.temi_id,
+                        'path': [{'x': c.x, 'y': c.y} for c in path_coords],
+                        'status': NavigationStatus.NAVIGATING.value,
+                        'timestamp': {'.sv': 'timestamp'}
+                    })
+                    logger.info("✅ Realtime DB에 경로 저장")
+                except Exception as e:
+                    logger.warning(f"⚠️ Realtime DB 저장 실패 (무시): {str(e)}")
             
             # 7. Temi에게 이동 명령
             await self._send_temi_command(
@@ -292,45 +310,77 @@ class NavigationService:
             
             doc = doc_ref.get()
             if not doc.exists:
+                logger.warning(f"⚠️ 네비게이션 세션을 찾을 수 없음: {navigation_id}")
                 return
             
             data = doc.to_dict()
-            destination = Coordinate(**data['destination'])
+            
+            # 목적지 데이터 안전하게 추출
+            destination_data = data.get('destination')
+            if not destination_data:
+                logger.error(f"❌ 목적지 정보가 없습니다: {navigation_id}")
+                return
+            
+            if isinstance(destination_data, dict) and 'x' in destination_data and 'y' in destination_data:
+                destination = Coordinate(
+                    x=float(destination_data['x']),
+                    y=float(destination_data['y'])
+                )
+            else:
+                logger.error(f"❌ destination 형식 오류: {destination_data}")
+                return
             
             # 남은 거리 계산
             distance_remaining = self.pathfinder._distance(current_location, destination)
             
             # 진행률 계산
-            total_distance = data['distance_total']
-            progress = max(0, min(100, (1 - distance_remaining / total_distance) * 100))
+            total_distance = data.get('distance_total', 0)
+            if total_distance > 0:
+                progress = max(0, min(100, (1 - distance_remaining / total_distance) * 100))
+            else:
+                progress = 0
             
             # 남은 시간
-            time_remaining = distance_remaining / self.default_temi_speed
+            time_remaining = distance_remaining / self.default_temi_speed if self.default_temi_speed > 0 else 0
             
+            # 업데이트할 데이터
             update_data = {
-                "current_location": current_location.dict(),
-                "distance_remaining": distance_remaining,
-                "progress": progress,
-                "time_remaining": time_remaining,
+                "current_location": {
+                    "x": float(current_location.x),
+                    "y": float(current_location.y)
+                },
+                "distance_remaining": float(distance_remaining),
+                "progress": float(progress),
+                "time_remaining": float(time_remaining),
                 "updated_at": datetime.now()
             }
             
             if status:
                 update_data["status"] = status.value
             
+            # Firestore 업데이트
             doc_ref.update(update_data)
+            logger.info(f"✅ Firestore 진행 상황 업데이트: {navigation_id} - {progress:.1f}%")
             
-            # Realtime DB도 업데이트
+            # Realtime DB 업데이트 (선택적)
             if self.rtdb:
-                self.rtdb.child(f'navigation/{navigation_id}').update({
-                    'current_location': {'x': current_location.x, 'y': current_location.y},
-                    'progress': progress,
-                    'status': status.value if status else data['status'],
-                    'timestamp': {'.sv': 'timestamp'}
-                })
+                try:
+                    self.rtdb.child(f'navigation/{navigation_id}').update({
+                        'current_location': {
+                            'x': float(current_location.x),
+                            'y': float(current_location.y)
+                        },
+                        'progress': float(progress),
+                        'status': status.value if status else data.get('status', 'NAVIGATING'),
+                        'timestamp': {'.sv': 'timestamp'}
+                    })
+                    logger.info("✅ Realtime DB 진행 상황 업데이트")
+                except Exception as e:
+                    logger.warning(f"⚠️ Realtime DB 업데이트 실패 (무시): {str(e)}")
             
         except Exception as e:
-            logger.error(f"네비게이션 진행 상황 업데이트 실패: {str(e)}")
+            logger.error(f"❌ 네비게이션 진행 상황 업데이트 실패: {navigation_id}, 오류: {str(e)}")
+            raise
     
     # ==================== Temi 제어 ====================
     
@@ -340,19 +390,15 @@ class NavigationService:
     ) -> TemiMoveResponse:
         """Temi 로봇 이동 명령"""
         try:
-            # Temi 현재 위치
             temi_location = await self._get_temi_location(request.temi_id)
             current = temi_location.coordinate if temi_location else Coordinate(x=5, y=5)
             
-            # 경로 계산
             path_coords, distance, time = self.pathfinder.calculate_path(
                 current, request.destination, request.speed
             )
             
-            # 명령 ID 생성
             command_id = self._generate_command_id()
             
-            # Temi에게 명령 전송
             await self._send_temi_command(
                 temi_id=request.temi_id,
                 command_type="goto",
@@ -417,13 +463,8 @@ class NavigationService:
     async def get_all_locations(self) -> Dict[str, Any]:
         """모든 위치 정보 조회"""
         try:
-            # 구역 정보
-            zones = [
-                Zone(**zone_data)
-                for zone_data in self.store_layout['zones']
-            ]
+            zones = [Zone(**zone_data) for zone_data in self.store_layout['zones']]
             
-            # 상품 위치
             products_docs = self.db.collection(self.products_collection)\
                                   .where('is_active', '==', True)\
                                   .stream()
@@ -441,14 +482,13 @@ class NavigationService:
                         coordinate=Coordinate(x=location['x'], y=location['y'])
                     ))
             
-            # Temi 위치
             temi_locations = await self._get_all_temi_locations()
             
-            # 충전소
-            charging_stations = [
-                Coordinate(**station)
-                for station in self.store_layout.get('charging_stations', [])
-            ]
+            charging_stations_data = self.store_layout.get('charging_stations', [])
+            charging_stations = []
+            for station in charging_stations_data:
+                if isinstance(station, dict) and 'x' in station and 'y' in station:
+                    charging_stations.append(Coordinate(**station))
             
             return {
                 "zones": zones,
@@ -491,7 +531,6 @@ class NavigationService:
                         coordinate=coord
                     ))
             
-            # 거리순 정렬
             nearby.sort(key=lambda p: self.pathfinder._distance(request.coordinate, p.coordinate))
             
             return NearbyProductsResponse(
@@ -508,20 +547,29 @@ class NavigationService:
     
     async def get_store_layout(self) -> StoreLayoutResponse:
         """매장 레이아웃 정보"""
-        zones = [Zone(**z) for z in self.store_layout['zones']]
-        charging_stations = [
-            Coordinate(**s) for s in self.store_layout.get('charging_stations', [])
-        ]
-        
-        layout = StoreLayout(
-            width=self.store_layout['width'],
-            height=self.store_layout['height'],
-            zones=zones,
-            obstacles=self.store_layout.get('obstacles', []),
-            charging_stations=charging_stations
-        )
-        
-        return StoreLayoutResponse(success=True, layout=layout)
+        try:
+            zones = [Zone(**z) for z in self.store_layout['zones']]
+            
+            charging_stations_data = self.store_layout.get('charging_stations', [])
+            charging_stations = []
+            
+            for station in charging_stations_data:
+                if isinstance(station, dict) and 'x' in station and 'y' in station:
+                    charging_stations.append(Coordinate(**station))
+            
+            layout = StoreLayout(
+                width=self.store_layout['width'],
+                height=self.store_layout['height'],
+                zones=zones,
+                obstacles=self.store_layout.get('obstacles', []),
+                charging_stations=charging_stations
+            )
+            
+            return StoreLayoutResponse(success=True, layout=layout)
+            
+        except Exception as e:
+            logger.error(f"매장 레이아웃 조회 실패: {str(e)}")
+            raise
     
     # ==================== 내부 헬퍼 함수 ====================
     
@@ -529,21 +577,40 @@ class NavigationService:
         """Temi 위치 조회"""
         try:
             if self.rtdb:
-                data = self.rtdb.child(f'temi/{temi_id}/location').get()
-                if data:
+                try:
+                    data = self.rtdb.child(f'temi/{temi_id}/location').get()
+                    if data:
+                        return TemiLocation(
+                            temi_id=temi_id,
+                            coordinate=Coordinate(**data.get('coordinate', {'x': 5, 'y': 5})),
+                            heading=data.get('heading', 0),
+                            battery=data.get('battery', 100),
+                            status=TemiStatus(data.get('status', 'AVAILABLE')),
+                            last_updated=datetime.now()
+                        )
+                except Exception as e:
+                    logger.warning(f"⚠️ Realtime DB에서 Temi 위치 조회 실패: {str(e)}")
+            
+            try:
+                doc = self.db.collection("temi_robots").document(temi_id).get()
+                if doc.exists:
+                    data = doc.to_dict()
+                    location = data.get('location', {})
                     return TemiLocation(
                         temi_id=temi_id,
-                        coordinate=Coordinate(**data.get('coordinate', {'x': 5, 'y': 5})),
-                        heading=data.get('heading', 0),
-                        battery=data.get('battery', 100),
-                        status=TemiStatus(data.get('status', 'AVAILABLE')),
-                        last_updated=datetime.fromisoformat(data['last_updated']) if 'last_updated' in data else datetime.now()
+                        coordinate=Coordinate(**location.get('coordinate', {'x': 5, 'y': 5})),
+                        heading=location.get('heading', 0),
+                        battery=location.get('battery', 100),
+                        status=TemiStatus(location.get('status', 'AVAILABLE')),
+                        last_updated=datetime.now()
                     )
+            except Exception as e:
+                logger.warning(f"⚠️ Firestore에서 Temi 위치 조회 실패: {str(e)}")
             
             return None
             
         except Exception as e:
-            logger.warning(f"Temi 위치 조회 실패: {str(e)}")
+            logger.warning(f"⚠️ Temi 위치 조회 실패: {str(e)}")
             return None
     
     async def _get_all_temi_locations(self) -> List[TemiLocation]:
@@ -568,7 +635,7 @@ class NavigationService:
             return []
             
         except Exception as e:
-            logger.warning(f"Temi 위치 목록 조회 실패: {str(e)}")
+            logger.warning(f"⚠️ Temi 위치 목록 조회 실패: {str(e)}")
             return []
     
     async def _send_temi_command(
@@ -582,13 +649,13 @@ class NavigationService:
         message: str = None,
         parameters: dict = None
     ):
-        """Temi에게 명령 전송 (Realtime DB + WebSocket)"""
+        """Temi에게 명령 전송"""
         try:
             command_data = {
                 'command_id': self._generate_command_id(),
                 'temi_id': temi_id,
                 'type': command_type,
-                'timestamp': {'.sv': 'timestamp'},
+                'timestamp': datetime.now().isoformat(),
                 'status': 'pending'
             }
             
@@ -609,15 +676,19 @@ class NavigationService:
             if parameters:
                 command_data['parameters'] = parameters
             
-            # Realtime DB에 명령 저장
             if self.rtdb:
-                self.rtdb.child(f'temi_commands/{temi_id}').push(command_data)
-                logger.info(f"✅ Temi 명령 전송: {temi_id} - {command_type}")
-            
-            # TODO: WebSocket으로도 전송 (실시간 통신)
+                try:
+                    self.rtdb.child(f'temi_commands/{temi_id}').push(command_data)
+                    logger.info(f"✅ Temi 명령 전송 (Realtime DB): {temi_id} - {command_type}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Realtime DB 명령 전송 실패 (무시): {str(e)}")
+            else:
+                self.db.collection("temi_commands").add(command_data)
+                logger.info(f"✅ Temi 명령 저장 (Firestore): {temi_id} - {command_type}")
             
         except Exception as e:
-            logger.error(f"Temi 명령 전송 실패: {str(e)}")
+            logger.error(f"❌ Temi 명령 전송 실패: {str(e)}")
+            raise
     
     def _generate_navigation_id(self) -> str:
         """네비게이션 ID 생성"""
