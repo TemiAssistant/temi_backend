@@ -17,3 +17,6 @@ __pycache__/
 .idea/
 *.swp
 *.swo
+
+# Data
+data/product/*.json
