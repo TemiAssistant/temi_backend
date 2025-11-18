@@ -1,6 +1,7 @@
 # app/api/products.py
 """
 상품 관련 API 엔드포인트
+실제 products.json 구조에 맞춰 수정됨
 """
 
 from fastapi import APIRouter, HTTPException, Query, Path
@@ -13,7 +14,10 @@ from app.models.product import (
     RecommendationRequest,
     RecommendationResponse,
     CategoriesResponse,
+    SubCategoriesResponse,
     BrandsResponse,
+    FilterOptionsResponse,
+    ProductCountResponse,
     SortBy
 )
 from app.services.product_service import product_service
@@ -23,10 +27,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
-# ==================== 👇 새로 추가: 상품 개수 조회 ====================
+
+# ==================== 상품 개수 조회 ====================
 
 @router.get(
     "/count",
+    response_model=ProductCountResponse,
     summary="전체 상품 개수 조회",
     description="Firestore에 저장된 전체 상품 개수를 조회합니다"
 )
@@ -35,47 +41,52 @@ async def get_product_count():
     전체 상품 개수 조회
     
     Returns:
-        dict: {
-            "success": bool,
-            "total_count": int,
-            "active_count": int,
-            "inactive_count": int
-        }
+        ProductCountResponse: 상품 개수 통계
     """
     try:
         count_data = await product_service.get_product_count()
-        return {
-            "success": True,
+        return ProductCountResponse(
+            success=True,
             **count_data
-        }
+        )
     except Exception as e:
         logger.error(f"상품 개수 조회 실패: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="상품 개수 조회 중 오류가 발생했습니다"
         )
-# ==================== 👇 필터 옵션 조회 API 추가 ====================
+
+
+# ==================== 필터 옵션 조회 ====================
 
 @router.get(
     "/filters/options",
+    response_model=FilterOptionsResponse,
     summary="필터 옵션 조회",
-    description="검색 필터에 사용할 브랜드, 카테고리, 서브카테고리, 태그 목록을 조회합니다"
+    description="검색 필터에 사용할 브랜드, 카테고리, 서브카테고리, 피부타입, 가격범위를 조회합니다"
 )
 async def get_filter_options():
-
+    """
+    필터 옵션 조회
+    
+    Returns:
+        FilterOptionsResponse: 필터 옵션 목록
+    """
     try:
         filter_options = await product_service.get_filter_options()
-        return {
-            "success": True,
-            **filter_options
-        }
+        return FilterOptionsResponse(
+            success=True,
+            filters=filter_options
+        )
     except Exception as e:
         logger.error(f"필터 옵션 조회 실패: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail="필터 옵션 조회 중 오류가 발생했습니다"
         )
-# ==================== 카테고리/브랜드 (먼저 정의) ====================
+
+
+# ==================== 카테고리/브랜드 ====================
 
 @router.get(
     "/categories",
@@ -88,7 +99,7 @@ async def get_categories():
     카테고리 목록 조회
     
     Returns:
-        CategoriesResponse: 카테고리 목록 및 상품 수
+        CategoriesResponse: 카테고리 목록
     """
     try:
         categories = await product_service.get_categories()
@@ -103,6 +114,36 @@ async def get_categories():
 
 
 @router.get(
+    "/sub-categories",
+    response_model=SubCategoriesResponse,
+    summary="서브카테고리 목록",
+    description="서브카테고리 목록과 상품 수를 조회합니다"
+)
+async def get_sub_categories(
+    category: Optional[str] = Query(None, description="카테고리로 필터링")
+):
+    """
+    서브카테고리 목록 조회
+    
+    Args:
+        category: 특정 카테고리의 서브카테고리만 조회
+    
+    Returns:
+        SubCategoriesResponse: 서브카테고리 목록
+    """
+    try:
+        sub_categories = await product_service.get_sub_categories(category)
+        return SubCategoriesResponse(success=True, sub_categories=sub_categories)
+        
+    except Exception as e:
+        logger.error(f"서브카테고리 조회 실패: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="서브카테고리 조회 중 오류가 발생했습니다"
+        )
+
+
+@router.get(
     "/brands",
     response_model=BrandsResponse,
     summary="브랜드 목록",
@@ -113,7 +154,7 @@ async def get_brands():
     브랜드 목록 조회
     
     Returns:
-        BrandsResponse: 브랜드 목록 및 상품 수
+        BrandsResponse: 브랜드 목록
     """
     try:
         brands = await product_service.get_brands()
@@ -127,13 +168,84 @@ async def get_brands():
         )
 
 
-# ==================== 검색 (특정 경로) ====================
+# ==================== 검색 ====================
+
+@router.get(
+    "/search",
+    response_model=ProductSearchResponse,
+    summary="상품 검색",
+    description="다양한 조건으로 상품을 검색합니다"
+)
+async def search_products(
+    query: Optional[str] = Query(None, description="검색 키워드"),
+    category: Optional[str] = Query(None, description="카테고리 필터"),
+    sub_category: Optional[str] = Query(None, description="서브카테고리 필터"),
+    brand: Optional[str] = Query(None, description="브랜드 필터"),
+    min_price: Optional[int] = Query(None, ge=0, description="최소 가격"),
+    max_price: Optional[int] = Query(None, ge=0, description="최대 가격"),
+    skin_type: Optional[str] = Query(None, description="피부 타입"),
+    in_stock: Optional[bool] = Query(True, description="재고 있는 상품만"),
+    sort_by: SortBy = Query(SortBy.POPULARITY, description="정렬 기준"),
+    page: int = Query(1, ge=1, description="페이지 번호"),
+    page_size: int = Query(20, ge=1, le=100, description="페이지 크기")
+):
+    """
+    상품 검색
+    
+    **필터링 옵션:**
+    - query: 상품명, 브랜드, 성분에서 검색
+    - category: 카테고리 필터
+    - sub_category: 서브카테고리 필터
+    - brand: 브랜드 필터
+    - min_price, max_price: 가격 범위
+    - skin_type: 피부 타입
+    - in_stock: 재고 있는 상품만
+    
+    **정렬 옵션:**
+    - popularity: 인기순 (할인율)
+    - price_low: 낮은 가격순
+    - price_high: 높은 가격순
+    - recent: 최신순
+    - discount: 할인율순
+    
+    Returns:
+        ProductSearchResponse: 검색 결과
+    """
+    try:
+        params = ProductSearchParams(
+            query=query,
+            category=category,
+            sub_category=sub_category,
+            brand=brand,
+            min_price=min_price,
+            max_price=max_price,
+            skin_type=skin_type,
+            in_stock=in_stock,
+            sort_by=sort_by,
+            page=page,
+            page_size=page_size
+        )
+        
+        result = await product_service.search_products(params)
+        
+        return ProductSearchResponse(
+            success=True,
+            **result
+        )
+        
+    except Exception as e:
+        logger.error(f"상품 검색 실패: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"상품 검색 중 오류가 발생했습니다: {str(e)}"
+        )
+
 
 @router.get(
     "/search/quick",
     response_model=List[ProductSummary],
     summary="빠른 검색",
-    description="키워드로 빠르게 상품을 검색합니다 (간단 버전)"
+    description="키워드로 빠르게 상품을 검색합니다"
 )
 async def quick_search(
     q: str = Query(..., min_length=1, description="검색 키워드"),
@@ -150,67 +262,15 @@ async def quick_search(
     """
     params = ProductSearchParams(
         query=q,
-        page_size=limit,
-        page=1
+        page=1,
+        page_size=limit
     )
     
     result = await product_service.search_products(params)
     return result['products']
 
 
-@router.post(
-    "/search",
-    response_model=ProductSearchResponse,
-    summary="상품 검색",
-    description="다양한 조건으로 상품을 검색합니다"
-)
-async def search_products(params: ProductSearchParams):
-    """
-    상품 검색 (복합 필터링)
-    
-    **검색 조건:**
-    - query: 키워드 검색 (상품명, 브랜드, 태그)
-    - category: 카테고리 필터
-    - brand: 브랜드 필터
-    - min_price, max_price: 가격 범위
-    - skin_type: 피부 타입
-    - concerns: 피부 고민
-    - tags: 태그
-    - in_stock: 재고 있는 상품만
-    - sort_by: 정렬 기준
-    - page, page_size: 페이징
-    
-    **정렬 옵션:**
-    - popularity: 인기순
-    - price_low: 낮은 가격순
-    - price_high: 높은 가격순
-    - rating: 평점순
-    - sales: 판매량순
-    
-    Returns:
-        ProductSearchResponse: 검색 결과
-    """
-    try:
-        result = await product_service.search_products(params)
-        
-        return ProductSearchResponse(
-            success=True,
-            total=result['total'],
-            page=result['page'],
-            page_size=result['page_size'],
-            total_pages=result['total_pages'],
-            products=result['products']
-        )
-        
-    except Exception as e:
-        logger.error(f"상품 검색 실패: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"상품 검색 중 오류가 발생했습니다: {str(e)}"
-        )
-
-
-# ==================== 카테고리/브랜드별 조회 ====================
+# ==================== 카테고리별/브랜드별 조회 ====================
 
 @router.get(
     "/category/{category}",
@@ -225,7 +285,7 @@ async def get_products_by_category(
     """
     카테고리별 상품 조회
     
-    - **category**: 카테고리명 (예: 스킨케어)
+    - **category**: 카테고리명 (예: 대_스킨케어)
     - **limit**: 조회할 상품 수
     
     Returns:
@@ -255,7 +315,7 @@ async def get_products_by_brand(
     """
     브랜드별 상품 조회
     
-    - **brand**: 브랜드명 (예: 설화수)
+    - **brand**: 브랜드명 (예: 토리든)
     - **limit**: 조회할 상품 수
     
     Returns:
@@ -278,7 +338,7 @@ async def get_products_by_brand(
     "/recommendations/popular",
     response_model=List[ProductSummary],
     summary="인기 상품",
-    description="인기 상품을 조회합니다 (판매량 기준)"
+    description="인기 상품을 조회합니다 (할인율 기준)"
 )
 async def get_popular_products(
     limit: int = Query(10, ge=1, le=50, description="조회할 상품 수")
@@ -307,14 +367,9 @@ async def get_recommendations(request: RecommendationRequest):
     상품 추천
     
     **추천 방식:**
-    1. **product_id 제공**: 유사 상품 추천 (Content-Based)
-    2. **customer_id 제공**: 고객 기반 추천 (Collaborative Filtering)
-    3. **skin_type/concerns 제공**: 프로필 기반 추천
-    4. **아무것도 없음**: 인기 상품 추천
-    
-    **AI 모델 연동 계획:**
-    - 현재: 규칙 기반 추천
-    - 향후: BentoML 기반 딥러닝 추천 모델
+    1. **product_id 제공**: 유사 상품 추천
+    2. **skin_type 제공**: 피부 타입별 추천
+    3. **아무것도 없음**: 인기 상품 추천 (할인율 기준)
     
     Args:
         request: 추천 요청 파라미터
@@ -339,7 +394,7 @@ async def get_recommendations(request: RecommendationRequest):
         )
 
 
-# ==================== 상품 조회 (마지막에 정의) ====================
+# ==================== 상품 조회 ====================
 
 @router.get(
     "",
@@ -371,7 +426,7 @@ async def get_products(
     description="상품 ID로 상세 정보를 조회합니다"
 )
 async def get_product(
-    product_id: str = Path(..., description="상품 ID (예: prod_001)")
+    product_id: str = Path(..., description="상품 ID (예: prod_1)")
 ):
     """
     상품 상세 정보 조회

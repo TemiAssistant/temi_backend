@@ -2,13 +2,15 @@
 """
 상품 관련 비즈니스 로직
 Firestore와 상호작용하며 데이터 처리
+실제 products.json 구조에 맞춰 수정됨
 """
 
 from typing import List, Optional, Dict, Any
 from app.core.firebase import firestore_db
 from app.models.product import (
     ProductDetail, ProductSummary, ProductSearchParams,
-    RecommendationRequest, SortBy
+    RecommendationRequest, SortBy,
+    CategoryInfo, SubCategoryInfo, BrandInfo, FilterOptions
 )
 from datetime import datetime
 import logging
@@ -71,7 +73,7 @@ class ProductService:
             logger.error(f"전체 상품 조회 실패: {str(e)}")
             raise
     
-    # ==================== 👇 검색 개선 ====================
+    # ==================== 검색 ====================
     
     async def search_products(
         self,
@@ -90,276 +92,104 @@ class ProductService:
             logger.info(f"검색 대상 상품: {len(docs)}개")
             
             # 2. 메모리에서 필터링
-            products = []
+            filtered_products = []
+            
             for doc in docs:
                 try:
                     data = doc.to_dict()
                     
-                    # 재고 필터
-                    if params.in_stock and data.get('stock', {}).get('current', 0) <= 0:
-                        continue
-                    
-                    # 키워드 검색 (이름, 브랜드, 태그, 카테고리, 서브카테고리)
+                    # 검색 키워드 필터링
                     if params.query:
-                        query_lower = params.query.lower().strip()
-                        
-                        # 검색 대상 필드
-                        name = data.get('name', '').lower()
-                        brand = data.get('brand', '').lower()
-                        category = data.get('category', '').lower()
-                        sub_category = data.get('sub_category', '').lower()
-                        tags = [tag.lower() for tag in data.get('tags', [])]
-                        
-                        # 하나라도 매칭되면 포함
-                        name_match = query_lower in name
-                        brand_match = query_lower in brand
-                        category_match = query_lower in category
-                        sub_category_match = query_lower in sub_category
-                        tag_match = any(query_lower in tag for tag in tags)
-                        
-                        if not (name_match or brand_match or category_match or 
-                                sub_category_match or tag_match):
+                        query_lower = params.query.lower()
+                        if not (
+                            query_lower in data.get('name', '').lower() or
+                            query_lower in data.get('brand', '').lower() or
+                            query_lower in ' '.join(data.get('ingredients', [])).lower()
+                        ):
                             continue
                     
-                    # 카테고리 필터
-                    if params.category:
-                        if data.get('category', '') != params.category:
-                            continue
-                    
-                    # 브랜드 필터
-                    if params.brand:
-                        if data.get('brand', '') != params.brand:
-                            continue
-                    
-                    # 가격 필터
-                    product_price = data.get('price', 0)
-                    if params.min_price is not None and product_price < params.min_price:
-                        continue
-                    if params.max_price is not None and product_price > params.max_price:
+                    # 카테고리 필터링
+                    if params.category and data.get('category') != params.category:
                         continue
                     
-                    # 피부 타입 필터
+                    # 서브카테고리 필터링
+                    if params.sub_category and data.get('sub_category') != params.sub_category:
+                        continue
+                    
+                    # 브랜드 필터링
+                    if params.brand and data.get('brand') != params.brand:
+                        continue
+                    
+                    # 가격 범위 필터링
+                    price = data.get('price', 0)
+                    if params.min_price is not None and price < params.min_price:
+                        continue
+                    if params.max_price is not None and price > params.max_price:
+                        continue
+                    
+                    # 피부 타입 필터링
                     if params.skin_type:
                         skin_types = data.get('skin_types', [])
-                        if params.skin_type not in skin_types and '전체' not in skin_types:
+                        if params.skin_type not in skin_types and '모든 피부 타입' not in skin_types and '모든피부' not in skin_types:
                             continue
                     
-                    # 피부 고민 필터
-                    if params.concerns:
-                        product_concerns = data.get('concerns', [])
-                        if not any(concern in product_concerns for concern in params.concerns):
+                    # 재고 필터링
+                    if params.in_stock:
+                        stock = data.get('stock', {})
+                        if stock.get('current', 0) <= 0:
                             continue
                     
-                    # 태그 필터
-                    if params.tags:
-                        product_tags = data.get('tags', [])
-                        if not any(tag in product_tags for tag in params.tags):
-                            continue
-                    
-                    products.append(ProductSummary(**data))
+                    filtered_products.append(ProductSummary(**data))
                     
                 except Exception as e:
-                    logger.warning(f"상품 파싱 실패: {doc.id}, 오류: {str(e)}")
+                    logger.warning(f"상품 필터링 중 오류: {str(e)}")
                     continue
             
-            logger.info(f"필터링 후 상품: {len(products)}개")
-            
             # 3. 정렬
-            products = self._sort_products(products, params.sort_by)
+            filtered_products = self._sort_products(filtered_products, params.sort_by)
             
             # 4. 페이징
-            total = len(products)
-            start = (params.page - 1) * params.page_size
-            end = start + params.page_size
-            paginated_products = products[start:end]
+            total = len(filtered_products)
+            total_pages = (total + params.page_size - 1) // params.page_size
+            
+            start_idx = (params.page - 1) * params.page_size
+            end_idx = start_idx + params.page_size
+            
+            products_page = filtered_products[start_idx:end_idx]
+            
+            logger.info(f"검색 결과: {total}개 (페이지: {params.page}/{total_pages})")
             
             return {
-                "total": total,
-                "page": params.page,
-                "page_size": params.page_size,
-                "total_pages": (total + params.page_size - 1) // params.page_size,
-                "products": paginated_products
+                'total': total,
+                'page': params.page,
+                'page_size': params.page_size,
+                'total_pages': total_pages,
+                'products': products_page
             }
             
         except Exception as e:
             logger.error(f"상품 검색 실패: {str(e)}")
             raise
     
-    def _sort_products(
-        self,
-        products: List[ProductSummary],
-        sort_by: SortBy
-    ) -> List[ProductSummary]:
-        """상품 정렬"""
-        if sort_by == SortBy.POPULARITY:
-            return sorted(
-                products,
-                key=lambda p: getattr(p.sales, 'monthly_sold', 0) if p.sales else 0,
-                reverse=True
-            )
-        elif sort_by == SortBy.PRICE_LOW:
+    def _sort_products(self, products: List[ProductSummary], sort_by: SortBy) -> List[ProductSummary]:
+        """상품 리스트 정렬"""
+        if sort_by == SortBy.PRICE_LOW:
             return sorted(products, key=lambda p: p.price)
         elif sort_by == SortBy.PRICE_HIGH:
             return sorted(products, key=lambda p: p.price, reverse=True)
-        elif sort_by == SortBy.RATING:
-            return sorted(
-                products,
-                key=lambda p: getattr(p.rating, 'average', 0) if p.rating else 0,
-                reverse=True
-            )
-        elif sort_by == SortBy.SALES:
-            return sorted(
-                products,
-                key=lambda p: getattr(p.sales, 'total_sold', 0) if p.sales else 0,
-                reverse=True
-            )
+        elif sort_by == SortBy.DISCOUNT:
+            return sorted(products, key=lambda p: p.discount_rate, reverse=True)
         elif sort_by == SortBy.RECENT:
-            return products
-        
-        return products
+            return sorted(
+                products,
+                key=lambda p: p.created_at if p.created_at else datetime.min,
+                reverse=True
+            )
+        else:  # POPULARITY (기본)
+            # 할인율이 높은 순으로 정렬 (판매량 데이터가 없으므로)
+            return sorted(products, key=lambda p: p.discount_rate, reverse=True)
     
-    # ==================== 상품 개수 조회 ====================
-    
-    async def get_product_count(self) -> Dict[str, int]:
-        try:
-            # 전체 상품 수
-            all_docs = self.db.collection(self.collection).stream()
-            total_count = sum(1 for _ in all_docs)
-            
-            # 활성 상품 수
-            active_docs = self.db.collection(self.collection)\
-                                .where('is_active', '==', True)\
-                                .stream()
-            active_count = sum(1 for _ in active_docs)
-            
-            # 비활성 상품 수
-            inactive_count = total_count - active_count
-            
-            logger.info(f"상품 개수 조회 완료 - 전체: {total_count}, 활성: {active_count}, 비활성: {inactive_count}")
-            
-            return {
-                "total_count": total_count,
-                "active_count": active_count,
-                "inactive_count": inactive_count
-            }
-            
-        except Exception as e:
-            logger.error(f"상품 개수 조회 실패: {str(e)}")
-            raise
-    
-    # ==================== 필터 옵션 조회 ====================
-    
-    async def get_filter_options(self) -> Dict[str, List[str]]:
-        """
-        필터 옵션 조회 (브랜드, 카테고리, 서브카테고리, 태그)
-        
-        Returns:
-            Dict: {
-                "brands": 브랜드 목록,
-                "categories": 카테고리 목록,
-                "sub_categories": 서브카테고리 목록,
-                "tags": 태그 목록
-            }
-        """
-        try:
-            docs = self.db.collection(self.collection)\
-                         .where('is_active', '==', True)\
-                         .stream()
-            
-            brands_set = set()
-            categories_set = set()
-            sub_categories_set = set()
-            tags_set = set()
-            
-            for doc in docs:
-                data = doc.to_dict()
-                
-                # 브랜드
-                if data.get('brand'):
-                    brands_set.add(data['brand'])
-                
-                # 카테고리
-                if data.get('category'):
-                    categories_set.add(data['category'])
-                
-                # 서브카테고리
-                if data.get('sub_category'):
-                    sub_categories_set.add(data['sub_category'])
-                
-                # 태그
-                if data.get('tags'):
-                    tags_set.update(data['tags'])
-            
-            return {
-                "brands": sorted(list(brands_set)),
-                "categories": sorted(list(categories_set)),
-                "sub_categories": sorted(list(sub_categories_set)),
-                "tags": sorted(list(tags_set))
-            }
-            
-        except Exception as e:
-            logger.error(f"필터 옵션 조회 실패: {str(e)}")
-            raise
-    
-    # ==================== 카테고리/브랜드 ====================
-    
-    async def get_categories(self) -> List[Dict[str, Any]]:
-        """카테고리 목록 및 상품 수 조회"""
-        try:
-            docs = self.db.collection(self.collection)\
-                         .where('is_active', '==', True)\
-                         .stream()
-            
-            category_count = {}
-            for doc in docs:
-                data = doc.to_dict()
-                category = data.get('category')
-                if category:
-                    category_count[category] = category_count.get(category, 0) + 1
-            
-            categories = [
-                {
-                    "category": cat,
-                    "product_count": count,
-                    "description": None
-                }
-                for cat, count in sorted(category_count.items())
-            ]
-            
-            return categories
-            
-        except Exception as e:
-            logger.error(f"카테고리 조회 실패: {str(e)}")
-            raise
-    
-    async def get_brands(self) -> List[Dict[str, Any]]:
-        """브랜드 목록 및 상품 수 조회"""
-        try:
-            docs = self.db.collection(self.collection)\
-                         .where('is_active', '==', True)\
-                         .stream()
-            
-            brand_count = {}
-            for doc in docs:
-                data = doc.to_dict()
-                brand = data.get('brand')
-                if brand:
-                    brand_count[brand] = brand_count.get(brand, 0) + 1
-            
-            brands = [
-                {
-                    "brand": brand,
-                    "product_count": count,
-                    "logo_url": None
-                }
-                for brand, count in sorted(brand_count.items())
-            ]
-            
-            return brands
-            
-        except Exception as e:
-            logger.error(f"브랜드 조회 실패: {str(e)}")
-            raise
+    # ==================== 카테고리별 조회 ====================
     
     async def get_products_by_category(
         self,
@@ -380,13 +210,13 @@ class ProductService:
                     data = doc.to_dict()
                     products.append(ProductSummary(**data))
                 except Exception as e:
-                    logger.warning(f"상품 파싱 실패: {doc.id}")
                     continue
             
+            logger.info(f"카테고리 '{category}' 상품 조회: {len(products)}개")
             return products
             
         except Exception as e:
-            logger.error(f"카테고리별 상품 조회 실패: {category}, 오류: {str(e)}")
+            logger.error(f"카테고리별 조회 실패: {str(e)}")
             raise
     
     async def get_products_by_brand(
@@ -408,13 +238,164 @@ class ProductService:
                     data = doc.to_dict()
                     products.append(ProductSummary(**data))
                 except Exception as e:
-                    logger.warning(f"상품 파싱 실패: {doc.id}")
                     continue
             
+            logger.info(f"브랜드 '{brand}' 상품 조회: {len(products)}개")
             return products
             
         except Exception as e:
-            logger.error(f"브랜드별 상품 조회 실패: {brand}, 오류: {str(e)}")
+            logger.error(f"브랜드별 조회 실패: {str(e)}")
+            raise
+    
+    # ==================== 통계 ====================
+    
+    async def get_product_count(self) -> Dict[str, Any]:
+        """상품 개수 통계"""
+        try:
+            # 전체 상품
+            all_docs = list(self.db.collection(self.collection).stream())
+            total_count = len(all_docs)
+            
+            # 활성/비활성 구분
+            active_count = sum(1 for doc in all_docs if doc.to_dict().get('is_active', False))
+            inactive_count = total_count - active_count
+            
+            # 카테고리별 개수
+            by_category = {}
+            for doc in all_docs:
+                data = doc.to_dict()
+                if data.get('is_active', False):
+                    category = data.get('category', '기타')
+                    by_category[category] = by_category.get(category, 0) + 1
+            
+            return {
+                'total_count': total_count,
+                'active_count': active_count,
+                'inactive_count': inactive_count,
+                'by_category': by_category
+            }
+            
+        except Exception as e:
+            logger.error(f"상품 개수 조회 실패: {str(e)}")
+            raise
+    
+    async def get_categories(self) -> List[CategoryInfo]:
+        """카테고리 목록 및 상품 수 조회"""
+        try:
+            docs = self.db.collection(self.collection)\
+                         .where('is_active', '==', True)\
+                         .stream()
+            
+            category_counts = {}
+            for doc in docs:
+                data = doc.to_dict()
+                category = data.get('category', '기타')
+                category_counts[category] = category_counts.get(category, 0) + 1
+            
+            categories = [
+                CategoryInfo(category=cat, product_count=count)
+                for cat, count in sorted(category_counts.items())
+            ]
+            
+            logger.info(f"카테고리 조회: {len(categories)}개")
+            return categories
+            
+        except Exception as e:
+            logger.error(f"카테고리 조회 실패: {str(e)}")
+            raise
+    
+    async def get_sub_categories(self, category: Optional[str] = None) -> List[SubCategoryInfo]:
+        """서브카테고리 목록 조회"""
+        try:
+            query = self.db.collection(self.collection).where('is_active', '==', True)
+            
+            if category:
+                query = query.where('category', '==', category)
+            
+            docs = query.stream()
+            
+            sub_category_counts = {}
+            for doc in docs:
+                data = doc.to_dict()
+                sub_cat = data.get('sub_category', '기타')
+                sub_category_counts[sub_cat] = sub_category_counts.get(sub_cat, 0) + 1
+            
+            sub_categories = [
+                SubCategoryInfo(sub_category=sub_cat, product_count=count)
+                for sub_cat, count in sorted(sub_category_counts.items())
+            ]
+            
+            logger.info(f"서브카테고리 조회: {len(sub_categories)}개")
+            return sub_categories
+            
+        except Exception as e:
+            logger.error(f"서브카테고리 조회 실패: {str(e)}")
+            raise
+    
+    async def get_brands(self) -> List[BrandInfo]:
+        """브랜드 목록 및 상품 수 조회"""
+        try:
+            docs = self.db.collection(self.collection)\
+                         .where('is_active', '==', True)\
+                         .stream()
+            
+            brand_counts = {}
+            for doc in docs:
+                data = doc.to_dict()
+                brand = data.get('brand', '기타')
+                brand_counts[brand] = brand_counts.get(brand, 0) + 1
+            
+            brands = [
+                BrandInfo(brand=brand, product_count=count)
+                for brand, count in sorted(brand_counts.items())
+            ]
+            
+            logger.info(f"브랜드 조회: {len(brands)}개")
+            return brands
+            
+        except Exception as e:
+            logger.error(f"브랜드 조회 실패: {str(e)}")
+            raise
+    
+    async def get_filter_options(self) -> FilterOptions:
+        """필터 옵션 조회"""
+        try:
+            docs = list(
+                self.db.collection(self.collection)
+                .where('is_active', '==', True)
+                .stream()
+            )
+            
+            brands = set()
+            categories = set()
+            sub_categories = set()
+            skin_types = set()
+            min_price = float('inf')
+            max_price = 0
+            
+            for doc in docs:
+                data = doc.to_dict()
+                brands.add(data.get('brand', ''))
+                categories.add(data.get('category', ''))
+                sub_categories.add(data.get('sub_category', ''))
+                
+                for skin_type in data.get('skin_types', []):
+                    skin_types.add(skin_type)
+                
+                price = data.get('price', 0)
+                min_price = min(min_price, price)
+                max_price = max(max_price, price)
+            
+            return FilterOptions(
+                brands=sorted([b for b in brands if b]),
+                categories=sorted([c for c in categories if c]),
+                sub_categories=sorted([s for s in sub_categories if s]),
+                skin_types=sorted([s for s in skin_types if s]),
+                price_range={'min': int(min_price) if min_price != float('inf') else 0, 'max': int(max_price)}
+            )
+            
+        except Exception as e:
+            logger.error(f"필터 옵션 조회 실패: {str(e)}")
             raise
     
     # ==================== 추천 ====================
@@ -424,31 +405,30 @@ class ProductService:
         request: RecommendationRequest
     ) -> Dict[str, Any]:
         """상품 추천"""
-        
-        if request.product_id:
-            recommendation_type = "content_based"
-            products = await self._get_similar_products(request.product_id, request.limit)
-        
-        elif request.customer_id:
-            recommendation_type = "collaborative"
-            products = await self._get_popular_products(request.limit)
-        
-        elif request.skin_type or request.concerns:
-            recommendation_type = "content_based"
-            products = await self._get_products_by_profile(
-                request.skin_type,
-                request.concerns,
-                request.limit
-            )
-        
-        else:
-            recommendation_type = "popular"
-            products = await self._get_popular_products(request.limit)
-        
-        return {
-            "recommendation_type": recommendation_type,
-            "products": products
-        }
+        try:
+            # 1. 기준 상품 기반 추천
+            if request.product_id:
+                products = await self._get_similar_products(request.product_id, request.limit)
+                recommendation_type = "content_based"
+            
+            # 2. 피부 타입 기반 추천
+            elif request.skin_type:
+                products = await self._get_products_by_skin_type(request.skin_type, request.limit)
+                recommendation_type = "skin_type_based"
+            
+            # 3. 인기 상품 추천 (기본)
+            else:
+                products = await self._get_popular_products(request.limit)
+                recommendation_type = "popular"
+            
+            return {
+                'recommendation_type': recommendation_type,
+                'products': products
+            }
+            
+        except Exception as e:
+            logger.error(f"상품 추천 실패: {str(e)}")
+            raise
     
     async def _get_similar_products(
         self,
@@ -457,10 +437,12 @@ class ProductService:
     ) -> List[ProductSummary]:
         """유사 상품 추천"""
         try:
+            # 기준 상품 조회
             base_product = await self.get_product_by_id(product_id)
             if not base_product:
-                return []
+                return await self._get_popular_products(limit)
             
+            # 같은 카테고리의 상품 조회
             docs = self.db.collection(self.collection)\
                          .where('is_active', '==', True)\
                          .where('category', '==', base_product.category)\
@@ -476,13 +458,15 @@ class ProductService:
                     data = doc.to_dict()
                     product = ProductSummary(**data)
                     
+                    # 가격대가 비슷한 상품 우선
                     price_diff = abs(product.price - base_product.price) / base_product.price
-                    if price_diff <= 0.3:
+                    if price_diff <= 0.3:  # 30% 이내
                         products.append(product)
                     
                 except Exception as e:
                     continue
             
+            # 가격 차이순 정렬
             products.sort(key=lambda p: abs(p.price - base_product.price))
             
             return products[:limit]
@@ -491,8 +475,41 @@ class ProductService:
             logger.error(f"유사 상품 추천 실패: {str(e)}")
             return []
     
+    async def _get_products_by_skin_type(
+        self,
+        skin_type: str,
+        limit: int
+    ) -> List[ProductSummary]:
+        """피부 타입별 상품 추천"""
+        try:
+            docs = self.db.collection(self.collection)\
+                         .where('is_active', '==', True)\
+                         .limit(100)\
+                         .stream()
+            
+            products = []
+            for doc in docs:
+                try:
+                    data = doc.to_dict()
+                    skin_types = data.get('skin_types', [])
+                    
+                    if skin_type in skin_types or '모든 피부 타입' in skin_types or '모든피부' in skin_types:
+                        products.append(ProductSummary(**data))
+                        
+                except Exception as e:
+                    continue
+            
+            # 할인율 순 정렬
+            products.sort(key=lambda p: p.discount_rate, reverse=True)
+            
+            return products[:limit]
+            
+        except Exception as e:
+            logger.error(f"피부 타입별 상품 조회 실패: {str(e)}")
+            return []
+    
     async def _get_popular_products(self, limit: int) -> List[ProductSummary]:
-        """인기 상품 추천"""
+        """인기 상품 추천 (할인율 높은 순)"""
         try:
             docs = self.db.collection(self.collection)\
                          .where('is_active', '==', True)\
@@ -507,95 +524,15 @@ class ProductService:
                 except Exception as e:
                     continue
             
-            products = self._sort_products(products, SortBy.SALES)
+            # 할인율 순 정렬
+            products.sort(key=lambda p: p.discount_rate, reverse=True)
             
             return products[:limit]
             
         except Exception as e:
             logger.error(f"인기 상품 조회 실패: {str(e)}")
             return []
-    
-    async def _get_products_by_profile(
-        self,
-        skin_type: Optional[str],
-        concerns: Optional[List[str]],
-        limit: int
-    ) -> List[ProductSummary]:
-        """피부 타입/고민 기반 상품 추천"""
-        try:
-            docs = self.db.collection(self.collection)\
-                         .where('is_active', '==', True)\
-                         .limit(100)\
-                         .stream()
-            
-            products = []
-            for doc in docs:
-                try:
-                    data = doc.to_dict()
-                    
-                    if skin_type:
-                        skin_types = data.get('skin_types', [])
-                        if skin_type not in skin_types and '전체' not in skin_types:
-                            continue
-                    
-                    if concerns:
-                        product_concerns = data.get('concerns', [])
-                        match_count = sum(1 for c in concerns if c in product_concerns)
-                        if match_count == 0:
-                            continue
-                        
-                        data['_match_score'] = match_count
-                    
-                    products.append(ProductSummary(**data))
-                    
-                except Exception as e:
-                    continue
-            
-            if concerns:
-                products.sort(
-                    key=lambda p: p.__dict__.get('_match_score', 0),
-                    reverse=True
-                )
-            else:
-                products = self._sort_products(products, SortBy.RATING)
-            
-            return products[:limit]
-            
-        except Exception as e:
-            logger.error(f"프로필 기반 추천 실패: {str(e)}")
-            return []
 
-    # ==================== AI 모델 연동 (TODO) ====================
-    
-    # TODO: BentoML 연동 시 구현
-    # async def _get_ai_recommendations(
-    #     self,
-    #     request: RecommendationRequest
-    # ) -> List[ProductSummary]:
-    #     """AI 모델 기반 추천"""
-    #     try:
-    #         # BentoML 서버에 요청
-    #         response = await bentoml_client.predict({
-    #             "customer_id": request.customer_id,
-    #             "product_id": request.product_id,
-    #             "limit": request.limit
-    #         })
-    #         
-    #         product_ids = response['recommended_product_ids']
-    #         
-    #         # 추천된 상품 조회
-    #         products = []
-    #         for product_id in product_ids:
-    #             product = await self.get_product_by_id(product_id)
-    #             if product:
-    #                 products.append(ProductSummary(**product.dict()))
-    #         
-    #         return products
-    #         
-    #     except Exception as e:
-    #         logger.error(f"AI 추천 실패: {str(e)}")
-    #         # Fallback: 인기 상품 반환
-    #         return await self._get_popular_products(request.limit)
 
 # 싱글톤 인스턴스
 product_service = ProductService()
