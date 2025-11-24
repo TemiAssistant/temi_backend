@@ -79,12 +79,12 @@ class ProductSummary(ProductBase):
 class ProductSearchParams(BaseModel):
     """상품 검색 파라미터"""
     query: Optional[str] = Field(None, description="검색 키워드")
-    category: Optional[str] = Field(None, description="카테고리 필터")
-    sub_category: Optional[str] = Field(None, description="서브카테고리 필터")
+    first_category: Optional[str] = Field(None, description="첫번째 카테고리 필터")
+    mid_category: Optional[str] = Field(None, description="두 번째 카테고리 필터")
     brand: Optional[str] = Field(None, description="브랜드 필터")
     min_price: Optional[int] = Field(None, ge=0, description="최소 가격")
     max_price: Optional[int] = Field(None, ge=0, description="최대 가격")
-    skin_type: Optional[str] = Field(None, description="피부 타입")
+    spec: Optional[str] = Field(None, description="피부 타입")
     in_stock: Optional[bool] = Field(True, description="재고 있는 상품만")
     sort_by: SortBy = Field(SortBy.POPULARITY, description="정렬 기준")
     page: int = Field(1, ge=1, description="페이지 번호")
@@ -169,10 +169,9 @@ class BrandsResponse(BaseModel):
 class FilterOptions(BaseModel):
     """검색 필터 옵션"""
     brands: List[str] = Field(..., description="브랜드 목록")
-    categories: List[str] = Field(..., description="카테고리 목록")
-    sub_categories: List[str] = Field(..., description="서브카테고리 목록")
-    skin_types: List[str] = Field(..., description="피부타입 목록")
-    price_range: Dict[str, int] = Field(..., description="가격 범위 (min, max)")
+    first_categories: List[str] = Field(..., description="첫번째 카테고리 목록")
+    mid_categories: List[str] = Field(..., description="두 번째 카테고리 목록")
+    spec: List[str] = Field(..., description="피부타입 목록")
 
 
 class FilterOptionsResponse(BaseModel):

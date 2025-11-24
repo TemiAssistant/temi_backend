@@ -43,36 +43,35 @@ class ProductService:
             logger.error(f"상품 조회 실패: {product_id}, 오류: {str(e)}")
             raise
     
-    async def get_all_products(
-        self,
-        limit: int = 100,
-        offset: int = 0
-    ) -> List[ProductSummary]:
-        """전체 상품 조회 (페이징)"""
+    async def get_all_products(self, limit: int = 100, offset: int = 0) -> List[Dict]:
+        """전체 상품 조회"""
         try:
-            query = self.db.collection(self.collection)\
-                          .where('is_active', '==', True)\
-                          .limit(limit)\
-                          .offset(offset)
-            
-            docs = query.stream()
-            
+            print(f"🔍 상품 조회 시작: limit={limit}, offset={offset}")  # 디버그
+        
+            products_ref = self.db.collection('products')
+        
+            # offset은 Firestore에서 비효율적이므로 limit만 사용
+            if limit:
+                products_ref = products_ref.limit(limit)
+        
+            print(f"📊 쿼리 생성 완료")  # 디버그
+        
+            docs = list(products_ref.stream())
+            print(f"📦 문서 개수: {len(docs)}")  # 디버그
+        
             products = []
             for doc in docs:
-                try:
-                    data = doc.to_dict()
-                    products.append(ProductSummary(**data))
-                except Exception as e:
-                    logger.warning(f"상품 파싱 실패: {doc.id}, 오류: {str(e)}")
-                    continue
-            
-            logger.info(f"상품 조회 완료 - {len(products)}개 (limit: {limit}, offset: {offset})")
+                data = doc.to_dict()
+                data['product_id'] = doc.id
+                products.append(data)
+        
+            print(f"✅ 상품 처리 완료: {len(products)}개")  # 디버그
             return products
-            
+        
         except Exception as e:
-            logger.error(f"전체 상품 조회 실패: {str(e)}")
+            print(f"❌ 상품 조회 실패: {str(e)}")  # 디버그
+            logger.error(f"상품 조회 실패: {str(e)}")
             raise
-    
     # ==================== 검색 ====================
     
     async def search_products(
@@ -109,11 +108,11 @@ class ProductService:
                             continue
                     
                     # 카테고리 필터링
-                    if params.category and data.get('category') != params.category:
+                    if params.first_category and data.get('first_category') != params.first_category:
                         continue
                     
                     # 서브카테고리 필터링
-                    if params.sub_category and data.get('sub_category') != params.sub_category:
+                    if params.mid_category and data.get('mid_category') != params.mid_category:
                         continue
                     
                     # 브랜드 필터링
@@ -128,9 +127,9 @@ class ProductService:
                         continue
                     
                     # 피부 타입 필터링
-                    if params.skin_type:
-                        skin_types = data.get('skin_types', [])
-                        if params.skin_type not in skin_types and '모든 피부 타입' not in skin_types and '모든피부' not in skin_types:
+                    if params.spec:
+                        specs = data.get('spec', [])
+                        if params.spec not in specs and '모든 피부 타입' not in specs and '모든피부' not in specs:
                             continue
                     
                     # 재고 필터링
@@ -357,43 +356,72 @@ class ProductService:
             logger.error(f"브랜드 조회 실패: {str(e)}")
             raise
     
-    async def get_filter_options(self) -> FilterOptions:
-        """필터 옵션 조회"""
+    # app/services/product_service.py
+
+    async def get_filter_options(self) -> Dict[str, Any]:
+        """
+        필터 옵션 조회
+        Firestore의 brand, first_category, mid_category, spec 필드 사용
+        """
         try:
-            docs = list(
-                self.db.collection(self.collection)
-                .where('is_active', '==', True)
-                .stream()
-            )
-            
+            products_ref = self.db.collection(self.collection)
+            docs = products_ref.stream()
+        
             brands = set()
-            categories = set()
-            sub_categories = set()
-            skin_types = set()
+            first_categories = set()  # ← 변경
+            mid_categories = set()    # ← 변경
+            specs = set()             # ← 변경 (spec → specs)
+        
             min_price = float('inf')
             max_price = 0
-            
+        
             for doc in docs:
                 data = doc.to_dict()
-                brands.add(data.get('brand', ''))
-                categories.add(data.get('category', ''))
-                sub_categories.add(data.get('sub_category', ''))
-                
-                for skin_type in data.get('skin_types', []):
-                    skin_types.add(skin_type)
-                
-                price = data.get('price', 0)
-                min_price = min(min_price, price)
-                max_price = max(max_price, price)
             
-            return FilterOptions(
-                brands=sorted([b for b in brands if b]),
-                categories=sorted([c for c in categories if c]),
-                sub_categories=sorted([s for s in sub_categories if s]),
-                skin_types=sorted([s for s in skin_types if s]),
-                price_range={'min': int(min_price) if min_price != float('inf') else 0, 'max': int(max_price)}
-            )
+            # 브랜드
+                if data.get('brand'):
+                    brands.add(data['brand'])
             
+            # first_category (대분류)
+                if data.get('first_category'):
+                    first_categories.add(data['first_category'])
+            
+            # mid_category (중분류)
+                if data.get('mid_category'):
+                    mid_categories.add(data['mid_category'])
+            
+            # spec (피부타입)
+                if data.get('spec'):
+                    spec_value = data['spec']
+                    # 쉼표로 구분된 경우 처리
+                    if isinstance(spec_value, str):
+                        for s in spec_value.split(','):
+                            s = s.strip()
+                            if s:
+                                specs.add(s)
+                    elif isinstance(spec_value, list):
+                        specs.update(spec_value)
+            
+                # 가격 범위
+                price = data.get('price_cur') or data.get('price', 0)
+                if price > 0:
+                    min_price = min(min_price, price)
+                    max_price = max(max_price, price)
+        
+            if min_price == float('inf'):
+                min_price = 0
+        
+            return {
+                'brands': sorted(list(brands)),
+                'first_categories': sorted(list(first_categories)),
+                'mid_categories': sorted(list(mid_categories)),
+                'spec': sorted(list(specs)),  # 'skin_types' 대신 'spec'
+                'price_range': {
+                    'min': int(min_price),
+                    'max': int(max_price)
+                }
+            }
+        
         except Exception as e:
             logger.error(f"필터 옵션 조회 실패: {str(e)}")
             raise

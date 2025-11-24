@@ -63,7 +63,7 @@ async def get_product_count():
     "/filters/options",
     response_model=FilterOptionsResponse,
     summary="필터 옵션 조회",
-    description="검색 필터에 사용할 브랜드, 카테고리, 서브카테고리, 피부타입, 가격범위를 조회합니다"
+    description="검색 필터에 사용할 필터를 조회합니다"
 )
 async def get_filter_options():
     """
