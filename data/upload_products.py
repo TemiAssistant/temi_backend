@@ -126,6 +126,10 @@ def normalize_field_names(product):
             normalized['goodsNo'] = normalized['goods_no']
         del normalized['goods_no']
     
+    # Mongo-like product_id만 존재하면 goodsNo로 사용
+    if 'product_id' in normalized and ('goodsNo' not in normalized or not normalized['goodsNo']):
+        normalized['goodsNo'] = normalized['product_id']
+    
     # disp_cat_no -> dispCatNo
     if 'disp_cat_no' in normalized:
         if 'dispCatNo' not in normalized:
@@ -153,14 +157,15 @@ def convert_product_data(product):
         # 1. 필드명 정규화
         converted = normalize_field_names(product)
         
-        # 2. goodsNo 확인
-        if 'goodsNo' not in converted or not converted['goodsNo']:
-            return None, "goodsNo 필드가 없거나 비어있음"
+        # 2. goodsNo ???
+        goods_id = converted.get('goodsNo') or converted.get('product_id')
+        if not goods_id:
+            return None, "goodsNo/product_id ??? ????? ???????"
         
-        goods_id = converted['goodsNo']
-        
-        # 3. product_id 추가
+        converted['goodsNo'] = goods_id
         converted['product_id'] = goods_id
+
+        # 4. ?? ?? ?? (??? -> ??)
         
         # 4. 가격 필드 변환 (문자열 -> 정수)
         if 'price_org' in converted:
@@ -208,12 +213,13 @@ def validate_product(product):
     상품 데이터 검증
     goodsNo 또는 goods_no 지원
     """
-    # goodsNo 또는 goods_no 확인
+    # goodsNo 또는 goods_no 확인 (product_id fallback)
     has_goods_id = ('goodsNo' in product and product['goodsNo']) or \
-                   ('goods_no' in product and product['goods_no'])
+                   ('goods_no' in product and product['goods_no']) or \
+                   ('product_id' in product and product['product_id'])
     
     if not has_goods_id:
-        return False, "필수 필드 누락 또는 빈 값: goodsNo/goods_no"
+        return False, "필수 필드 누락 또는 빈 값: product_id/goodsNo"
     
     # name 확인
     if 'name' not in product or not product['name']:
@@ -247,7 +253,7 @@ def upload_products(db, products):
                 is_valid, error_msg = validate_product(product)
                 if not is_valid:
                     error_count += 1
-                    goods_id = product.get('goodsNo') or product.get('goods_no', 'UNKNOWN')
+                    goods_id = product.get('goodsNo') or product.get('goods_no') or product.get('product_id', 'UNKNOWN')
                     errors.append(f"[{goods_id}] {error_msg}")
                     continue
                 
@@ -255,21 +261,19 @@ def upload_products(db, products):
                 converted_product, error_msg = convert_product_data(product)
                 if converted_product is None:
                     error_count += 1
-                    goods_id = product.get('goodsNo') or product.get('goods_no', 'UNKNOWN')
+                    goods_id = product.get('goodsNo') or product.get('goods_no') or product.get('product_id', 'UNKNOWN')
                     errors.append(f"[{goods_id}] 변환 실패: {error_msg}")
                     continue
                 
-                # goodsNo를 문서 ID로 사용
-                doc_id = converted_product['goodsNo']
-                
-                # 배치에 추가
+                # goodsNo ?? product_id? ?? ID? ??
+                doc_id = converted_product.get('goodsNo') or converted_product.get('product_id')
                 doc_ref = collection_ref.document(doc_id)
                 batch.set(doc_ref, converted_product)
                 batch_success += 1
-                
+
             except Exception as e:
                 error_count += 1
-                goods_id = product.get('goodsNo') or product.get('goods_no', 'UNKNOWN')
+                goods_id = product.get('goodsNo') or product.get('goods_no') or product.get('product_id', 'UNKNOWN')
                 errors.append(f"[{goods_id}] 예외 발생: {str(e)}")
         
         # 배치 커밋

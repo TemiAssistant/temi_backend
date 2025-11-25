@@ -84,7 +84,7 @@ class ProductSearchParams(BaseModel):
     brand: Optional[str] = Field(None, description="브랜드 필터")
     min_price: Optional[int] = Field(None, ge=0, description="최소 가격")
     max_price: Optional[int] = Field(None, ge=0, description="최대 가격")
-    spec: Optional[str] = Field(None, description="피부 타입")
+    spec: Optional[List[str]] = Field(None, description="피부 타입 목록")
     in_stock: Optional[bool] = Field(True, description="재고 있는 상품만")
     sort_by: SortBy = Field(SortBy.POPULARITY, description="정렬 기준")
     page: int = Field(1, ge=1, description="페이지 번호")

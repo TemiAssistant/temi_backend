@@ -21,6 +21,8 @@ from datetime import datetime
 from app.api import products
 from app.api import payment  # 결제 API 라우터
 from app.api import navigation
+from app.api import inventory
+from app.core.mqtt_client import mqtt_bridge
 
 load_dotenv()
 
@@ -45,6 +47,7 @@ app.add_middleware(
 app.include_router(products.router)
 app.include_router(payment.router)  # 결제 API 라우터 등록
 app.include_router(navigation.router)
+app.include_router(inventory.router)
 
 # ==================== 기본 엔드포인트 ====================
 
@@ -64,6 +67,7 @@ async def root():
             "products": "/api/products",
             "payments": "/api/payments",
             "navigation": "/api/navigation",
+            "inventory": "/api/inventory",
             "test": "/test"
         }
     }
@@ -85,6 +89,18 @@ async def health_check():
         },
         "timestamp": datetime.now().isoformat()
     }
+
+
+@app.on_event("startup")
+async def on_startup():
+    """애플리케이션 시작 시 MQTT 브리지를 활성화."""
+    mqtt_bridge.start()
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    """애플리케이션 종료 시 MQTT 연결을 정리."""
+    mqtt_bridge.stop()
 
 
 # ==================== Firestore 테스트 엔드포인트 ====================

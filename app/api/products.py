@@ -5,7 +5,7 @@
 """
 
 from fastapi import APIRouter, HTTPException, Query, Path
-from typing import Optional, List
+from typing import Optional, List, Union
 from app.models.product import (
     ProductDetail,
     ProductDescription,
@@ -186,7 +186,7 @@ async def search_products(
     brand: Optional[str] = Query(None, description="브랜드 필터"),
     min_price: Optional[int] = Query(None, ge=0, description="최소 가격"),
     max_price: Optional[int] = Query(None, ge=0, description="최대 가격"),
-    skin_type: Optional[str] = Query(None, description="피부 타입"),
+    skin_type: Optional[Union[str, List[str]]] = Query(None, description="피부 타입"),
     in_stock: Optional[bool] = Query(True, description="재고 있는 상품만"),
     sort_by: SortBy = Query(SortBy.POPULARITY, description="정렬 기준"),
     page: int = Query(1, ge=1, description="페이지 번호"),
@@ -215,6 +215,19 @@ async def search_products(
         ProductSearchResponse: 검색 결과
     """
     try:
+        # 피부 타입 파라미터 정규화 (문자열/다중 값 모두 지원)
+        def normalize_skin_types(value: Optional[Union[str, List[str]]]) -> Optional[List[str]]:
+            if value is None:
+                return None
+            if isinstance(value, list):
+                cleaned = [v.strip() for v in value if isinstance(v, str) and v.strip()]
+                return cleaned or None
+            if isinstance(value, str):
+                parts = [part.strip() for part in value.split(',')]
+                cleaned = [part for part in parts if part]
+                return cleaned or None
+            return None
+        
         params = ProductSearchParams(
             query=query,
             first_category=category,
@@ -222,7 +235,7 @@ async def search_products(
             brand=brand,
             min_price=min_price,
             max_price=max_price,
-            spec=skin_type,
+            spec=normalize_skin_types(skin_type),
             in_stock=in_stock,
             sort_by=sort_by,
             page=page,

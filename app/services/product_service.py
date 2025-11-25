@@ -272,9 +272,20 @@ class ProductService:
                     
                     # 피부 타입 필터링
                     if params.spec:
-                        specs = data.get('spec', [])
-                        if params.spec not in specs and '모든 피부 타입' not in specs and '모든피부' not in specs:
-                            continue
+                        requested_specs = [str(s).strip() for s in params.spec if str(s).strip()]
+                        product_specs = [str(s).strip() for s in data.get('spec', []) if str(s).strip()]
+                        if requested_specs:
+                            has_all = any(spec in ('모든 피부 타입', '모든피부', '모든 피부') for spec in product_specs)
+                            if not has_all:
+                                # 요청에 '모든 피부 타입'이 포함되어 있으면 모두 허용
+                                request_has_all = any(
+                                    req in ('모든 피부 타입', '모든피부', '모든 피부') for req in requested_specs
+                                )
+                                if request_has_all:
+                                    pass
+                                else:
+                                    if not any(req in product_specs for req in requested_specs):
+                                        continue
                     
                     # 재고 필터링
                     if params.in_stock:
