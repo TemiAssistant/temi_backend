@@ -25,6 +25,147 @@ class ProductService:
         self.db = firestore_db
         self.collection = "products"
     
+    def _to_int(self, value: Any) -> int:
+        """숫자로 해석 가능한 값을 안전하게 정수로 변환"""
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float)):
+            return int(value)
+        try:
+            cleaned = str(value).replace(",", "").strip()
+            if not cleaned:
+                return 0
+            return int(float(cleaned))
+        except (ValueError, TypeError):
+            return 0
+    
+    def _calculate_discount_rate(self, original_price: int, price: int) -> int:
+        """0~100 범위의 할인율을 계산"""
+        if not original_price:
+            return 0
+        try:
+            discount = round((original_price - price) / original_price * 100)
+            return max(0, min(100, discount))
+        except ZeroDivisionError:
+            return 0
+    
+    def _normalize_stock(self, stock_value: Any) -> Dict[str, int]:
+        """ProductStock 스키마에 맞는 재고 정보로 정규화"""
+        stock = {
+            'current': 0,
+            'threshold': 0,
+            'unit_weight': 0
+        }
+        
+        if isinstance(stock_value, dict):
+            stock['current'] = self._to_int(
+                stock_value.get('current') or
+                stock_value.get('stock') or
+                stock_value.get('quantity')
+            )
+            stock['threshold'] = self._to_int(stock_value.get('threshold'))
+            stock['unit_weight'] = self._to_int(stock_value.get('unit_weight'))
+            return stock
+        
+        current = self._to_int(stock_value)
+        if current:
+            stock['current'] = current
+        return stock
+    
+    def _split_to_list(self, value: Any) -> List[str]:
+        """콤마·슬래시 등으로 구분된 문자열을 리스트로 분리"""
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        if isinstance(value, str):
+            text = value
+            for sep in ['/', '|', '·', ';']:
+                text = text.replace(sep, ',')
+            return [part.strip() for part in text.split(',') if part.strip()]
+        return []
+    
+    def _normalize_skin_types(self, data: Dict[str, Any]) -> List[str]:
+        """피부 타입 정보를 리스트 형태로 추출"""
+        if data.get('skin_types'):
+            return self._split_to_list(data['skin_types'])
+        if data.get('spec'):
+            return self._split_to_list(data['spec'])
+        return []
+    
+    def _normalize_description(self, data: Dict[str, Any]) -> Dict[str, Optional[str]]:
+        """기존 usage/caution 필드를 통합"""
+        usage = None
+        caution = None
+        
+        description = data.get('description')
+        if isinstance(description, dict):
+            usage = description.get('usage')
+            caution = description.get('caution')
+        
+        usage = usage or data.get('usage')
+        caution = caution or data.get('caution')
+        
+        return {
+            'usage': usage,
+            'caution': caution
+        }
+    
+    def _normalize_product_data(
+        self,
+        data: Dict[str, Any],
+        doc_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Firestore 문서를 Product 모델 구조에 맞춰 변환"""
+        if not data:
+            data = {}
+        
+        price_value = self._to_int(
+            data.get('price') or data.get('price_cur') or data.get('priceCur')
+        )
+        original_price = self._to_int(
+            data.get('original_price') or
+            data.get('price_org') or
+            data.get('priceOrg') or
+            price_value
+        )
+        if original_price <= 0:
+            original_price = price_value
+        
+        discount_rate = data.get('discount_rate')
+        if discount_rate is None:
+            discount_rate = self._calculate_discount_rate(original_price, price_value)
+        else:
+            discount_rate = self._to_int(discount_rate)
+        
+        normalized = {
+            'product_id': data.get('product_id') or
+                          data.get('goodsNo') or
+                          data.get('goods_no') or
+                          doc_id or
+                          'unknown_product',
+            'name': data.get('name') or '미정 상품',
+            'brand': data.get('brand') or '기타',
+            'category': data.get('category') or data.get('first_category') or '기타',
+            'sub_category': data.get('sub_category') or data.get('mid_category') or '',
+            'price': price_value,
+            'original_price': original_price,
+            'discount_rate': discount_rate,
+            'is_active': data.get('is_active', True),
+            'stock': self._normalize_stock(data.get('stock')),
+            'description': self._normalize_description(data),
+            'ingredients': self._split_to_list(data.get('ingredients')),
+            'skin_types': self._normalize_skin_types(data),
+            'spec': self._split_to_list(data.get('spec') or data.get('skin_types')),
+            'image_url': data.get('image_url') or data.get('image'),
+            'created_at': data.get('created_at'),
+            'updated_at': data.get('updated_at'),
+            'first_category': data.get('first_category') or data.get('category'),
+            'mid_category': data.get('mid_category') or data.get('sub_category')
+        }
+        
+        return normalized
+    
     # ==================== 기본 조회 ====================
     
     async def get_product_by_id(self, product_id: str) -> Optional[ProductDetail]:
@@ -36,7 +177,7 @@ class ProductService:
                 logger.warning(f"상품을 찾을 수 없음: {product_id}")
                 return None
             
-            data = doc.to_dict()
+            data = self._normalize_product_data(doc.to_dict(), doc.id)
             return ProductDetail(**data)
             
         except Exception as e:
@@ -61,9 +202,15 @@ class ProductService:
         
             products = []
             for doc in docs:
-                data = doc.to_dict()
-                data['product_id'] = doc.id
-                products.append(data)
+                try:
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
+                    
+                    if not data.get('is_active', True):
+                        continue
+                    products.append(ProductSummary(**data))
+                except Exception as convert_error:
+                    logger.warning(f"상품 데이터 추출 실패 (ID: {doc.id}): {convert_error}")
+                    continue
         
             print(f"✅ 상품 처리 완료: {len(products)}개")  # 디버그
             return products
@@ -84,10 +231,7 @@ class ProductService:
         """
         try:
             # 1. 활성 상품 전체 로드
-            query = self.db.collection(self.collection)\
-                          .where('is_active', '==', True)
-            
-            docs = list(query.stream())
+            docs = list(self.db.collection(self.collection).stream())
             logger.info(f"검색 대상 상품: {len(docs)}개")
             
             # 2. 메모리에서 필터링
@@ -95,7 +239,7 @@ class ProductService:
             
             for doc in docs:
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     
                     # 검색 키워드 필터링
                     if params.query:
@@ -184,7 +328,7 @@ class ProductService:
                 key=lambda p: p.created_at if p.created_at else datetime.min,
                 reverse=True
             )
-        else:  # POPULARITY (기본)
+        else:  # 인기순(기본)
             # 할인율이 높은 순으로 정렬 (판매량 데이터가 없으므로)
             return sorted(products, key=lambda p: p.discount_rate, reverse=True)
     
@@ -206,7 +350,7 @@ class ProductService:
             products = []
             for doc in docs:
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     products.append(ProductSummary(**data))
                 except Exception as e:
                     continue
@@ -234,7 +378,7 @@ class ProductService:
             products = []
             for doc in docs:
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     products.append(ProductSummary(**data))
                 except Exception as e:
                     continue
@@ -252,18 +396,22 @@ class ProductService:
         """상품 개수 통계"""
         try:
             # 전체 상품
-            all_docs = list(self.db.collection(self.collection).stream())
-            total_count = len(all_docs)
+            raw_docs = list(self.db.collection(self.collection).stream())
+            normalized_docs = []
+            for doc in raw_docs:
+                try:
+                    normalized_docs.append(self._normalize_product_data(doc.to_dict(), doc.id))
+                except Exception as convert_error:
+                    logger.warning(f"상품 개수 계산용 데이터 변환 실패 (ID: {doc.id}): {convert_error}")
             
-            # 활성/비활성 구분
-            active_count = sum(1 for doc in all_docs if doc.to_dict().get('is_active', False))
+            total_count = len(normalized_docs)
+            active_count = sum(1 for data in normalized_docs if data.get('is_active', True))
             inactive_count = total_count - active_count
             
             # 카테고리별 개수
             by_category = {}
-            for doc in all_docs:
-                data = doc.to_dict()
-                if data.get('is_active', False):
+            for data in normalized_docs:
+                if data.get('is_active', True):
                     category = data.get('category', '기타')
                     by_category[category] = by_category.get(category, 0) + 1
             
@@ -287,7 +435,7 @@ class ProductService:
             
             category_counts = {}
             for doc in docs:
-                data = doc.to_dict()
+                data = self._normalize_product_data(doc.to_dict(), doc.id)
                 category = data.get('category', '기타')
                 category_counts[category] = category_counts.get(category, 0) + 1
             
@@ -315,7 +463,7 @@ class ProductService:
             
             sub_category_counts = {}
             for doc in docs:
-                data = doc.to_dict()
+                data = self._normalize_product_data(doc.to_dict(), doc.id)
                 sub_cat = data.get('sub_category', '기타')
                 sub_category_counts[sub_cat] = sub_category_counts.get(sub_cat, 0) + 1
             
@@ -340,7 +488,7 @@ class ProductService:
             
             brand_counts = {}
             for doc in docs:
-                data = doc.to_dict()
+                data = self._normalize_product_data(doc.to_dict(), doc.id)
                 brand = data.get('brand', '기타')
                 brand_counts[brand] = brand_counts.get(brand, 0) + 1
             
@@ -376,7 +524,11 @@ class ProductService:
             max_price = 0
         
             for doc in docs:
-                data = doc.to_dict()
+                try:
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
+                except Exception as convert_error:
+                    logger.warning(f"필터 옵션 변환 실패 (ID: {doc.id}): {convert_error}")
+                    continue
             
             # 브랜드
                 if data.get('brand'):
@@ -391,19 +543,11 @@ class ProductService:
                     mid_categories.add(data['mid_category'])
             
             # spec (피부타입)
-                if data.get('spec'):
-                    spec_value = data['spec']
-                    # 쉼표로 구분된 경우 처리
-                    if isinstance(spec_value, str):
-                        for s in spec_value.split(','):
-                            s = s.strip()
-                            if s:
-                                specs.add(s)
-                    elif isinstance(spec_value, list):
-                        specs.update(spec_value)
+                for spec_value in data.get('spec', []):
+                    specs.add(spec_value)
             
                 # 가격 범위
-                price = data.get('price_cur') or data.get('price', 0)
+                price = data.get('price', 0)
                 if price > 0:
                     min_price = min(min_price, price)
                     max_price = max(max_price, price)
@@ -483,7 +627,7 @@ class ProductService:
                     continue
                 
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     product = ProductSummary(**data)
                     
                     # 가격대가 비슷한 상품 우선
@@ -518,7 +662,7 @@ class ProductService:
             products = []
             for doc in docs:
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     skin_types = data.get('skin_types', [])
                     
                     if skin_type in skin_types or '모든 피부 타입' in skin_types or '모든피부' in skin_types:
@@ -547,7 +691,7 @@ class ProductService:
             products = []
             for doc in docs:
                 try:
-                    data = doc.to_dict()
+                    data = self._normalize_product_data(doc.to_dict(), doc.id)
                     products.append(ProductSummary(**data))
                 except Exception as e:
                     continue

@@ -214,12 +214,12 @@ async def search_products(
     try:
         params = ProductSearchParams(
             query=query,
-            category=category,
-            sub_category=sub_category,
+            first_category=category,
+            mid_category=sub_category,
             brand=brand,
             min_price=min_price,
             max_price=max_price,
-            skin_type=skin_type,
+            spec=skin_type,
             in_stock=in_stock,
             sort_by=sort_by,
             page=page,
@@ -280,7 +280,7 @@ async def quick_search(
 )
 async def get_products_by_category(
     category: str = Path(..., description="카테고리명"),
-    limit: int = Query(20, ge=1, le=100, description="조회할 상품 수")
+    limit: int = Query(20, ge=1, le=200, description="조회할 상품 수")
 ):
     """
     카테고리별 상품 조회
@@ -294,10 +294,8 @@ async def get_products_by_category(
     products = await product_service.get_products_by_category(category, limit)
     
     if not products:
-        raise HTTPException(
-            status_code=404,
-            detail=f"'{category}' 카테고리의 상품을 찾을 수 없습니다"
-        )
+        logger.info(f"카테고리 '{category}' 결과 없음")
+        return []
     
     return products
 
@@ -310,7 +308,7 @@ async def get_products_by_category(
 )
 async def get_products_by_brand(
     brand: str = Path(..., description="브랜드명"),
-    limit: int = Query(20, ge=1, le=100, description="조회할 상품 수")
+    limit: int = Query(20, ge=1, le=200, description="조회할 상품 수")
 ):
     """
     브랜드별 상품 조회
@@ -324,10 +322,8 @@ async def get_products_by_brand(
     products = await product_service.get_products_by_brand(brand, limit)
     
     if not products:
-        raise HTTPException(
-            status_code=404,
-            detail=f"'{brand}' 브랜드의 상품을 찾을 수 없습니다"
-        )
+        logger.info(f"브랜드 '{brand}' 결과 없음")
+        return []
     
     return products
 
@@ -403,7 +399,12 @@ async def get_recommendations(request: RecommendationRequest):
     description="전체 상품 목록을 페이징하여 조회합니다"
 )
 async def get_products(
-    limit: int = Query(20, ge=1, le=100, description="조회할 상품 수"),
+    limit: Optional[int] = Query(
+        None,
+        ge=1,
+        le=1000,
+        description="조회할 상품 수 (미지정 시 전체)"
+    ),
     offset: int = Query(0, ge=0, description="시작 위치")
 ):
     """
