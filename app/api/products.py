@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Path
 from typing import Optional, List
 from app.models.product import (
     ProductDetail,
+    ProductDescription,
     ProductSummary,
     ProductSearchParams,
     ProductSearchResponse,
@@ -18,6 +19,8 @@ from app.models.product import (
     BrandsResponse,
     FilterOptionsResponse,
     ProductCountResponse,
+    ProductUsageResponse,
+    ProductCautionResponse,
     SortBy
 )
 from app.services.product_service import product_service
@@ -446,3 +449,55 @@ async def get_product(
         )
     
     return product
+
+
+@router.get(
+    "/instructions/usage/{product_id}",
+    response_model=ProductUsageResponse,
+    summary="상품 사용 방법 조회",
+    description="상품의 사용 방법만 별도로 조회합니다"
+)
+async def get_product_usage(
+    product_id: str = Path(..., description="상품 ID (예: prod_1)")
+):
+    product = await product_service.get_product_by_id(product_id)
+
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail=f"상품을 찾을 수 없습니다: {product_id}"
+        )
+
+    description = product.description or ProductDescription()
+    return ProductUsageResponse(
+        success=True,
+        product_id=product.product_id,
+        name=product.name,
+        usage=description.usage
+    )
+
+
+@router.get(
+    "/instructions/caution/{product_id}",
+    response_model=ProductCautionResponse,
+    summary="상품 주의 사항 조회",
+    description="상품의 주의 사항만 별도로 조회합니다"
+)
+async def get_product_caution(
+    product_id: str = Path(..., description="상품 ID (예: prod_1)")
+):
+    product = await product_service.get_product_by_id(product_id)
+
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail=f"상품을 찾을 수 없습니다: {product_id}"
+        )
+
+    description = product.description or ProductDescription()
+    return ProductCautionResponse(
+        success=True,
+        product_id=product.product_id,
+        name=product.name,
+        caution=description.caution
+    )

@@ -189,3 +189,19 @@ class ProductCountResponse(BaseModel):
     active_count: int = Field(..., description="활성 상품 수")
     inactive_count: int = Field(..., description="비활성 상품 수")
     by_category: Dict[str, int] = Field(..., description="카테고리별 개수")
+
+
+class ProductUsageResponse(BaseModel):
+    """상품 사용 방법 응답"""
+    success: bool = True
+    product_id: str
+    name: str
+    usage: Optional[str] = None
+
+
+class ProductCautionResponse(BaseModel):
+    """상품 주의 사항 응답"""
+    success: bool = True
+    product_id: str
+    name: str
+    caution: Optional[str] = None
