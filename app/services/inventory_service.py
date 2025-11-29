@@ -4,7 +4,9 @@ from datetime import datetime
 from threading import Lock
 from typing import Dict, List, Optional
 
-from app.core.firebase import firestore_db
+import logging
+
+from app.core.firebase import firestore_db, realtime_db
 from app.models.inventory import (
     InventoryAlertsResponse,
     InventoryAlert,
@@ -17,6 +19,8 @@ from app.models.inventory import (
     InventoryUpdateRequest,
     InventoryUpdateResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class InventoryService:
@@ -32,7 +36,7 @@ class InventoryService:
         now = datetime.utcnow()
         initial_items = [
             InventoryItem(
-                product_id="prod_1",
+                product_id="prod_001",
                 name="퐁즈 클리어 훼이셜 립&아이 리무버",
                 current_stock=120,
                 threshold=15,
@@ -40,7 +44,7 @@ class InventoryService:
                 last_updated=now,
             ),
             InventoryItem(
-                product_id="prod_2",
+                product_id="prod_002",
                 name="닥터지 레드 블레미쉬 수딩크림",
                 current_stock=45,
                 threshold=20,
@@ -48,7 +52,7 @@ class InventoryService:
                 last_updated=now,
             ),
             InventoryItem(
-                product_id="prod_3",
+                product_id="prod_003",
                 name="라로슈포제 시카플라스트 밤B5",
                 current_stock=12,
                 threshold=12,
@@ -86,14 +90,25 @@ class InventoryService:
         raise ValueError(f"??? ?? ? ????: {product_id}")
 
     def _load_product_metadata(self, product_id: str) -> Optional[tuple[str, int, int]]:
+        if firestore_db is None:
+            logger.warning("Firestore가 초기화되지 않아 재고 메타데이터를 불러올 수 없습니다.")
+            return None
         try:
             doc = firestore_db.collection("products").document(product_id).get()
-        except Exception:
+        except Exception as exc:
+            logger.error("Firestore 조회 실패(%s): %s", product_id, exc)
             return None
+
         if not doc.exists:
             return None
+
         data = doc.to_dict() or {}
         stock_info = data.get("stock") or {}
+        if not isinstance(stock_info, dict):
+            if isinstance(stock_info, (int, float)):
+                stock_info = {"current": stock_info}
+            else:
+                stock_info = {}
         name = data.get("name") or product_id
         raw_threshold = stock_info.get("threshold")
         raw_unit_weight = stock_info.get("unit_weight")
@@ -108,6 +123,37 @@ class InventoryService:
         if unit_weight <= 0:
             unit_weight = 1
         return name, threshold, unit_weight
+
+    def _sync_inventory_state(self, item: InventoryItem, source: str) -> None:
+        snapshot = {
+            "product_id": item.product_id,
+            "name": item.name,
+            "current_stock": item.current_stock,
+            "threshold": item.threshold,
+            "source": source,
+        }
+
+        if firestore_db:
+            try:
+                firestore_db.collection("products").document(item.product_id).set(
+                    {
+                        "stock": {
+                            "current": item.current_stock,
+                            "threshold": item.threshold,
+                            "source": source,
+                        }
+                    },
+                    merge=True,
+                )
+            except Exception as exc:
+                logger.error("Firestore ?? ??? ??(%s): %s", item.product_id, exc)
+
+        if realtime_db:
+            try:
+                realtime_db.child("inventory/items").child(item.product_id).set(snapshot)
+            except Exception as exc:
+                logger.error("Realtime DB ?? ??? ??(%s): %s", item.product_id, exc)
+
 
     def get_status(self) -> InventoryStatusResponse:
         items = list(self._items.values())
@@ -160,6 +206,8 @@ class InventoryService:
                 note=request.reason,
             )
 
+            self._sync_inventory_state(item, source=source)
+
             return InventoryUpdateResponse(
                 success=True,
                 change=change,
@@ -189,6 +237,8 @@ class InventoryService:
                 source=f"sensor:{request.sensor_id}",
                 note=f"측정 무게 {request.measured_weight}{request.unit}",
             )
+            self._sync_inventory_state(item, source=f"sensor:{request.sensor_id}")
+
 
             return InventorySensorResponse(
                 success=True,
