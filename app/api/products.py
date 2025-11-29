@@ -28,6 +28,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 router = APIRouter(prefix="/api/products", tags=["Products"])
 
 
@@ -514,3 +515,5 @@ async def get_product_caution(
         name=product.name,
         caution=description.caution
     )
+
+

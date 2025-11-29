@@ -45,6 +45,7 @@ class ProductBase(BaseModel):
     brand: str
     category: str
     sub_category: str
+    zone: Optional[str] = Field(None, description="?? ?? ?(Zone)")
     price: int = Field(..., ge=0)
     original_price: int = Field(..., ge=0)
     discount_rate: int = Field(0, ge=0, le=100)

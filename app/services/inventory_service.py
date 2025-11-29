@@ -4,6 +4,7 @@ from datetime import datetime
 from threading import Lock
 from typing import Dict, List, Optional
 
+from app.core.firebase import firestore_db
 from app.models.inventory import (
     InventoryAlertsResponse,
     InventoryAlert,
@@ -58,11 +59,55 @@ class InventoryService:
         for item in initial_items:
             self._items[item.product_id] = item
 
-    def _get_item(self, product_id: str) -> InventoryItem:
+    def _get_item(self, product_id: str, *, create_if_missing: bool = False) -> InventoryItem:
         item = self._items.get(product_id)
-        if not item:
-            raise ValueError(f"상품을 찾을 수 없습니다: {product_id}")
-        return item
+        if item:
+            return item
+
+        if create_if_missing:
+            metadata = self._load_product_metadata(product_id)
+            now = datetime.utcnow()
+            if metadata:
+                name, threshold, unit_weight = metadata
+            else:
+                name, threshold, unit_weight = product_id, 0, 1
+
+            item = InventoryItem(
+                product_id=product_id,
+                name=name,
+                current_stock=0,
+                threshold=max(0, threshold),
+                unit_weight=max(1, unit_weight),
+                last_updated=now,
+            )
+            self._items[product_id] = item
+            return item
+
+        raise ValueError(f"??? ?? ? ????: {product_id}")
+
+    def _load_product_metadata(self, product_id: str) -> Optional[tuple[str, int, int]]:
+        try:
+            doc = firestore_db.collection("products").document(product_id).get()
+        except Exception:
+            return None
+        if not doc.exists:
+            return None
+        data = doc.to_dict() or {}
+        stock_info = data.get("stock") or {}
+        name = data.get("name") or product_id
+        raw_threshold = stock_info.get("threshold")
+        raw_unit_weight = stock_info.get("unit_weight")
+        try:
+            threshold = int(raw_threshold) if raw_threshold is not None else 0
+        except (TypeError, ValueError):
+            threshold = 0
+        try:
+            unit_weight = int(raw_unit_weight) if raw_unit_weight is not None else 1
+        except (TypeError, ValueError):
+            unit_weight = 1
+        if unit_weight <= 0:
+            unit_weight = 1
+        return name, threshold, unit_weight
 
     def get_status(self) -> InventoryStatusResponse:
         items = list(self._items.values())
@@ -101,7 +146,7 @@ class InventoryService:
         source: str = "manual",
     ) -> InventoryUpdateResponse:
         with self._lock:
-            item = self._get_item(request.product_id)
+            item = self._get_item(request.product_id, create_if_missing=True)
             previous = item.current_stock
             item.current_stock = request.new_stock
             item.last_updated = datetime.utcnow()
