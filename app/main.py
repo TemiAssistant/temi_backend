@@ -21,6 +21,7 @@ from datetime import datetime
 from app.api import products
 from app.api import payment  # 결제 API 라우터
 from app.api import inventory
+from app.api.ai_recommendations import router as ai_router
 from app.core.mqtt_client import mqtt_bridge
 
 load_dotenv()
@@ -46,7 +47,7 @@ app.add_middleware(
 app.include_router(products.router)
 app.include_router(payment.router)  # 결제 API 라우터 등록
 app.include_router(inventory.router)
-
+app.include_router(ai_router)
 # ==================== 기본 엔드포인트 ====================
 
 @app.get("/")
@@ -62,6 +63,8 @@ async def root():
         },
         "docs": "/docs",  # 👈 추가
         "endpoints": {  # 👈 추가: API 목록
+            "ai_chat": "/api/ai/chat",
+            "ai_recommend": "/api/ai/recommend",
             "products": "/api/products",
             "payments": "/api/payments",
             "inventory": "/api/inventory",

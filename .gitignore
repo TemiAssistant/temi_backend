@@ -20,3 +20,4 @@ __pycache__/
 
 # Data
 data/product/*.json
+app/bentoml_services/config.json
